@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend-vue
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend-vue:/app
+    environment:
+      - VITE_API_URL=http://fastapi:8000
+      - VITE_AUTH_URL=http://php:8080
+    networks:
+      - app-network
+
+  fastapi:
+    build:
+      context: ./backend-fastapi
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend-fastapi:/app
+    environment:
+      - DATABASE_URL=mariadb://root:password@mariadb/musicdb
+    networks:
+      - app-network
+
+  php:
+    build:
+      context: ./php-auth
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./php-auth:/var/www/html
+    networks:
+      - app-network
+
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mariadb-data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=musicdb
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
