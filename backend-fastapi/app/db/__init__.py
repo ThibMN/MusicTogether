@@ -1,3 +1,1 @@
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from app.db.database import get_db, engine, Base, SessionLocal
