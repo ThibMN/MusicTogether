@@ -10,7 +10,7 @@ class Room(Base):
     room_code = Column(String(10), unique=True, index=True)
     name = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Relations
     creator = relationship("User", back_populates="created_rooms")

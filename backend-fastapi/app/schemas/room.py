@@ -6,7 +6,7 @@ class RoomBase(BaseModel):
     name: str
 
 class RoomCreate(RoomBase):
-    pass
+    room_code: Optional[str] = None
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = None
@@ -15,10 +15,11 @@ class Room(RoomBase):
     id: int
     room_code: str
     created_at: datetime
-    created_by: int
+    created_by: Optional[int] = None
 
     class Config:
         orm_mode = True
+        from_attributes = True
 
 class RoomDetail(Room):
     active_users: Optional[int] = 0

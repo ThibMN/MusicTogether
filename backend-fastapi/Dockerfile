@@ -4,9 +4,10 @@ FROM python:3.13-slim
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3-dev \
-    build-essential \
     default-libmysqlclient-dev \
+    build-essential \
     pkg-config \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

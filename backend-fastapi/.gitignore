@@ -11,3 +11,4 @@
 /app/api/endpoints/music/music_service/music_service.pywz
 /app/db/__pycache__/
 /app/models/__pycache__/
+/app/schemas/__pycache__/

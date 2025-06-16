@@ -9,3 +9,5 @@ python-multipart
 yt-dlp
 ffmpeg-python
 websockets
+mysqlclient
+email-validator

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 import os
 import asyncio
 from pathlib import Path
+from sqlalchemy import or_
 
 from app.db.database import get_db
 from app.schemas import Music, MusicCreate, MusicUpdate, MusicUpload
@@ -80,11 +81,30 @@ async def upload_music(
     return {"message": "Téléchargement en cours"}
 
 @router.get("/", response_model=List[Music])
-def read_music(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_music(
+    search: str = Query(None, description="Rechercher par titre, artiste ou album"),
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
     """
-    Récupérer la liste des musiques.
+    Récupérer la liste des musiques avec possibilité de recherche.
     """
-    music = db.query(MusicModel).offset(skip).limit(limit).all()
+    query = db.query(MusicModel)
+    
+    # Appliquer le filtre de recherche si fourni
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                MusicModel.title.ilike(search_term),
+                MusicModel.artist.ilike(search_term),
+                MusicModel.album.ilike(search_term)
+            )
+        )
+    
+    # Appliquer pagination
+    music = query.offset(skip).limit(limit).all()
     return music
 
 @router.get("/{music_id}", response_model=Music)

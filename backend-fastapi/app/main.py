@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
-from app.db.database import engine
-from app.models import Base
+from app.db.database import engine, Base
 import logging
 
 # Configuration du logging
@@ -26,11 +25,12 @@ origins = [
     "http://localhost:8080",  # PHP Auth
     "http://frontend:3000",   # Frontend dans Docker
     "http://php:8080",        # PHP Auth dans Docker
+    "*",                      # Toutes les origines (temporairement pour le debug)
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],      # Accepter toutes les origines pour le debug
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
