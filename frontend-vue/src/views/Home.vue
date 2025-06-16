@@ -1,0 +1,54 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+const roomCode = ref('');
+const error = ref('');
+
+// Fonction pour rejoindre une salle existante ou en créer une nouvelle
+const joinRoom = async () => {
+  if (!roomCode.value) {
+    error.value = 'Veuillez entrer un code de salle';
+    return;
+  }
+  
+  // Redirection vers la salle
+  router.push(`/room/${roomCode.value.toUpperCase()}`);
+};
+</script>
+
+<template>
+  <div class="h-screen w-screen flex items-center justify-center bg-gray-900">
+    <div class="bg-gray-800 p-10 rounded-lg shadow-lg text-center max-w-md w-full">
+      <h1 class="text-4xl font-bold text-white mb-8">[LOGO MUSICTOGETHER]</h1>
+      
+      <div class="mb-8">
+        <h2 class="text-xl text-white mb-4">Rejoignez dès maintenant une salle MusicTogether en entrant son code</h2>
+        
+        <div class="mb-4">
+          <input 
+            v-model="roomCode"
+            type="text" 
+            placeholder="[ABCD] (placeholder)"
+            class="w-full p-3 rounded text-center text-black"
+            @keyup.enter="joinRoom"
+          />
+        </div>
+        
+        <p class="text-sm text-white">
+          Si la salle n'existe pas, elle sera créée pour vous
+        </p>
+        
+        <p v-if="error" class="text-red-500 mt-2">{{ error }}</p>
+      </div>
+      
+      <button 
+        @click="joinRoom"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full w-full"
+      >
+        Rejoindre la salle
+      </button>
+    </div>
+  </div>
+</template> 

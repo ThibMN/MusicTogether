@@ -1,10 +1,13 @@
-FROM node:24-alpine
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# Installer les dépendances
+COPY package.json ./
 RUN npm install
 
-COPY . .
+# Exposer le port
+EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+# Démarrer le serveur de développement
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"] 
