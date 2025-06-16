@@ -16,12 +16,15 @@ const joinRoom = async () => {
   // Redirection vers la salle
   router.push(`/room/${roomCode.value.toUpperCase()}`);
 };
+
+// Debug
+console.log('Home component loaded');
 </script>
 
 <template>
   <div class="h-screen w-screen flex items-center justify-center bg-gray-900">
     <div class="bg-gray-800 p-10 rounded-lg shadow-lg text-center max-w-md w-full">
-      <h1 class="text-4xl font-bold text-white mb-8">[LOGO MUSICTOGETHER]</h1>
+      <h1 class="text-4xl font-bold text-white mb-8">MusicTogether</h1>
       
       <div class="mb-8">
         <h2 class="text-xl text-white mb-4">Rejoignez dès maintenant une salle MusicTogether en entrant son code</h2>
@@ -30,7 +33,7 @@ const joinRoom = async () => {
           <input 
             v-model="roomCode"
             type="text" 
-            placeholder="[ABCD] (placeholder)"
+            placeholder="Code de salle (ex: ABCD)"
             class="w-full p-3 rounded text-center text-black"
             @keyup.enter="joinRoom"
           />

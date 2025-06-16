@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useMusicStore } from '../stores/music';
 import { useQueueStore } from '../stores/queue';
 import { useRoomStore } from '../stores/room';

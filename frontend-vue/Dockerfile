@@ -6,8 +6,11 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
+# Copier le reste du code source
+COPY . .
+
 # Exposer le port
 EXPOSE 3000
 
 # Démarrer le serveur de développement
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"] 
+CMD ["npm", "run", "dev"] 

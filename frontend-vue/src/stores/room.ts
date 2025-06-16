@@ -2,6 +2,9 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 2000; // 2 secondes
+const PING_INTERVAL = 30000; // 30 secondes
 
 export const useRoomStore = defineStore('room', {
   state: () => ({
@@ -9,24 +12,36 @@ export const useRoomStore = defineStore('room', {
     isConnected: false,
     socket: null as WebSocket | null,
     users: [] as any[],
-    playbackUpdateCallbacks: [] as Function[]
+    playbackUpdateCallbacks: [] as Function[],
+    reconnectAttempts: 0,
+    reconnectTimer: null as ReturnType<typeof setTimeout> | null,
+    isReconnecting: false,
+    lastRoomCode: '' as string,
+    pingTimer: null as ReturnType<typeof setInterval> | null,
+    lastPongTime: 0
   }),
   
   actions: {
     // Rejoindre une salle
     async joinRoom(roomCode: string) {
       try {
+        console.log(`Tentative de connexion à la salle: ${roomCode}`);
         // Vérifier si la salle existe
         const response = await axios.get(`${API_URL}/api/rooms/${roomCode}`);
+        console.log('Réponse du serveur:', response.data);
         this.currentRoom = response.data;
+        this.lastRoomCode = roomCode;
         
         // Établir une connexion WebSocket
         this.connectWebSocket(roomCode);
         
         return this.currentRoom;
       } catch (error) {
+        console.error('Erreur détaillée lors de la connexion à la salle:', error);
+        
         // Si la salle n'existe pas, la créer
         if (axios.isAxiosError(error) && error.response?.status === 404) {
+          console.log('Salle non trouvée, tentative de création...');
           return this.createRoom(roomCode);
         }
         throw error;
@@ -35,17 +50,26 @@ export const useRoomStore = defineStore('room', {
     
     // Créer une nouvelle salle
     async createRoom(roomCode: string) {
-      const response = await axios.post(`${API_URL}/api/rooms/`, {
-        name: `Salle ${roomCode}`,
-        room_code: roomCode
-      });
-      
-      this.currentRoom = response.data;
-      
-      // Établir une connexion WebSocket
-      this.connectWebSocket(roomCode);
-      
-      return this.currentRoom;
+      try {
+        console.log('Tentative de création de la salle:', roomCode);
+        
+        const response = await axios.post(`${API_URL}/api/rooms/`, {
+          name: `Salle ${roomCode}`,
+          room_code: roomCode
+        });
+        
+        console.log('Salle créée avec succès:', response.data);
+        this.currentRoom = response.data;
+        this.lastRoomCode = roomCode;
+        
+        // Établir une connexion WebSocket
+        this.connectWebSocket(roomCode);
+        
+        return this.currentRoom;
+      } catch (error) {
+        console.error('Erreur lors de la création de la salle:', error);
+        throw error;
+      }
     },
     
     // Établir une connexion WebSocket
@@ -55,50 +79,152 @@ export const useRoomStore = defineStore('room', {
         this.socket.close();
       }
       
+      // Arrêter le ping existant s'il y en a un
+      this.stopPing();
+      
       // Récupérer l'ID utilisateur (à implémenter avec l'authentification)
       const userId = 1; // Temporaire: à remplacer par l'ID réel de l'utilisateur
       
       // Créer une nouvelle connexion
-      this.socket = new WebSocket(`${API_URL.replace('http', 'ws')}/api/rooms/ws/${roomCode}/${userId}`);
+      const wsUrl = `${API_URL.replace('http', 'ws')}/api/rooms/ws/${roomCode}/${userId}`;
+      console.log('Tentative de connexion WebSocket à:', wsUrl);
+      
+      this.socket = new WebSocket(wsUrl);
       
       // Gestionnaire d'événements
       this.socket.onopen = () => {
         this.isConnected = true;
-        console.log('WebSocket connecté');
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+        console.log('WebSocket connecté avec succès');
+        
+        // Démarrer le ping
+        this.startPing();
       };
       
-      this.socket.onclose = () => {
+      this.socket.onclose = (event) => {
         this.isConnected = false;
-        console.log('WebSocket déconnecté');
+        console.log(`WebSocket déconnecté avec code: ${event.code}, raison: ${event.reason}`);
+        
+        // Arrêter le ping
+        this.stopPing();
+        
+        // Tenter une reconnexion si la déconnexion n'est pas volontaire
+        if (this.currentRoom && !event.wasClean && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          this.attemptReconnect(roomCode);
+        }
       };
       
       this.socket.onerror = (error) => {
-        console.error('Erreur WebSocket:', error);
+        console.error('Erreur WebSocket détaillée:', error);
+        // Ne pas tenter de reconnexion ici, onclose sera appelé après
       };
       
       this.socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        // Traiter les différents types de messages
-        switch (data.type) {
-          case 'user_joined':
-          case 'user_left':
-            // Mettre à jour la liste des utilisateurs
-            this.updateUsersList(data);
-            break;
+        console.log('Message WebSocket reçu:', event.data);
+        try {
+          const data = JSON.parse(event.data);
           
-          case 'play':
-          case 'pause':
-          case 'seek':
-            // Notifier les callbacks de mise à jour de lecture
-            this.notifyPlaybackUpdate(data);
-            break;
+          // Traiter les différents types de messages
+          switch (data.type) {
+            case 'user_joined':
+            case 'user_left':
+              // Mettre à jour la liste des utilisateurs
+              this.updateUsersList(data);
+              break;
+            
+            case 'play':
+            case 'pause':
+            case 'seek':
+              // Notifier les callbacks de mise à jour de lecture
+              this.notifyPlaybackUpdate(data);
+              break;
+              
+            case 'pong':
+              // Mettre à jour le timestamp du dernier pong reçu
+              this.lastPongTime = Date.now();
+              break;
+          }
+        } catch (error) {
+          console.error('Erreur lors du traitement du message WebSocket:', error);
         }
       };
     },
     
+    // Démarrer le ping périodique pour maintenir la connexion active
+    startPing() {
+      this.lastPongTime = Date.now();
+      
+      // Nettoyer l'ancien timer s'il existe
+      this.stopPing();
+      
+      // Créer un nouveau timer de ping
+      this.pingTimer = setInterval(() => {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          console.log('Envoi d\'un ping WebSocket...');
+          this.socket.send(JSON.stringify({ type: 'ping' }));
+          
+          // Vérifier si nous avons reçu un pong récemment
+          const timeSinceLastPong = Date.now() - this.lastPongTime;
+          if (timeSinceLastPong > PING_INTERVAL * 2) {
+            console.warn(`Pas de pong reçu depuis ${timeSinceLastPong}ms, la connexion est peut-être morte`);
+            
+            // Fermer la connexion pour forcer une reconnexion
+            if (this.socket) {
+              this.socket.close();
+              this.socket = null;
+            }
+            
+            // Tenter une reconnexion si nous avons un code de salle
+            if (this.lastRoomCode && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+              this.attemptReconnect(this.lastRoomCode);
+            }
+          }
+        }
+      }, PING_INTERVAL);
+    },
+    
+    // Arrêter le ping périodique
+    stopPing() {
+      if (this.pingTimer) {
+        clearInterval(this.pingTimer);
+        this.pingTimer = null;
+      }
+    },
+    
+    // Tenter une reconnexion WebSocket
+    attemptReconnect(roomCode: string) {
+      if (this.isReconnecting || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+      
+      this.isReconnecting = true;
+      this.reconnectAttempts++;
+      
+      console.log(`Tentative de reconnexion ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} dans ${RECONNECT_DELAY}ms`);
+      
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+      }
+      
+      this.reconnectTimer = setTimeout(() => {
+        console.log(`Reconnexion à la salle ${roomCode}...`);
+        this.connectWebSocket(roomCode);
+      }, RECONNECT_DELAY);
+    },
+    
     // Quitter la salle
     leaveRoom() {
+      // Annuler toute tentative de reconnexion en cours
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      
+      // Arrêter le ping
+      this.stopPing();
+      
+      this.isReconnecting = false;
+      this.reconnectAttempts = 0;
+      
       if (this.socket) {
         this.socket.close();
         this.socket = null;
@@ -107,6 +233,7 @@ export const useRoomStore = defineStore('room', {
       this.currentRoom = null;
       this.isConnected = false;
       this.users = [];
+      this.lastRoomCode = '';
     },
     
     // Mettre à jour la liste des utilisateurs
