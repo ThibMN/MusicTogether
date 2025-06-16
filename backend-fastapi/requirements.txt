@@ -1,4 +1,11 @@
 fastapi
 uvicorn
 sqlalchemy
-pymysql
+celery
+redis
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+yt-dlp
+ffmpeg-python
+websockets

@@ -14,6 +14,9 @@ services:
       - VITE_AUTH_URL=http://php:8080
     networks:
       - app-network
+    depends_on:
+      - fastapi
+      - php
 
   fastapi:
     build:
@@ -23,10 +26,17 @@ services:
       - "8000:8000"
     volumes:
       - ./backend-fastapi:/app
+      - music-storage:/app/storage
     environment:
       - DATABASE_URL=mariadb://root:password@mariadb/musicdb
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
     networks:
       - app-network
+    depends_on:
+      - mariadb
+      - redis
 
   php:
     build:
@@ -51,6 +61,49 @@ services:
       - MYSQL_DATABASE=musicdb
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  celery:
+    build:
+      context: ./backend-fastapi
+      dockerfile: Dockerfile
+    command: celery -A app.worker worker --loglevel=info
+    volumes:
+      - ./backend-fastapi:/app
+      - music-storage:/app/storage
+    environment:
+      - DATABASE_URL=mariadb://root:password@mariadb/musicdb
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - mariadb
+
+volumes:
+  mariadb-data:
+  redis-data:
+  music-storage:
 
 networks:
   app-network:
