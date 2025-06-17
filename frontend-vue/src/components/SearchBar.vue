@@ -47,7 +47,7 @@ const performSearch = async (query: string) => {
   
   isSearching.value = true;
   try {
-    searchResults.value = await musicStore.searchMusic(query);
+    searchResults.value = await musicStore.searchYoutube(query);
     showResults.value = true;
   } catch (error) {
     console.error('Erreur lors de la recherche:', error);
@@ -107,6 +107,43 @@ const uploadMusic = async () => {
   }
 };
 
+// Télécharger une musique depuis les résultats de recherche YouTube
+const downloadFromYoutube = async (videoUrl: string) => {
+  if (!currentRoom.value) return;
+  
+  try {
+    isUploading.value = true;
+    
+    const result = await musicStore.uploadMusic({
+      source_url: videoUrl
+    });
+    
+    // Si le téléchargement est réussi, ajouter à la file d'attente
+    if (result && result.music_id) {
+      await queueStore.addToQueue({
+        room_id: currentRoom.value.id,
+        music_id: result.music_id
+      });
+      
+      // Fermer les résultats de recherche
+      showResults.value = false;
+      searchQuery.value = '';
+    }
+  } catch (error) {
+    console.error('Erreur lors du téléchargement depuis YouTube:', error);
+  } finally {
+    isUploading.value = false;
+  }
+};
+
+// Formater la durée (MM:SS)
+const formatTime = (seconds: number): string => {
+  if (!seconds) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+};
+
 // Fermer les résultats de recherche en cliquant à l'extérieur
 const closeResults = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
@@ -158,39 +195,47 @@ onUnmounted(() => {
       Recherche en cours...
     </div>
     
-    <!-- Résultats de recherche -->
+    <!-- Résultats de recherche YouTube -->
     <div
       v-if="showResults && searchResults.length > 0"
-      class="absolute z-10 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg max-h-64 overflow-y-auto"
+      class="absolute z-10 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg max-h-96 overflow-y-auto"
     >
       <div
         v-for="result in searchResults"
         :key="result.id"
-        class="p-3 border-b border-gray-700 hover:bg-gray-700 cursor-pointer flex items-center"
-        @click="addToQueue(result.id)"
+        class="p-3 border-b border-gray-700 hover:bg-gray-700 cursor-pointer"
       >
-        <!-- Cover miniature -->
-        <div class="w-10 h-10 bg-gray-700 rounded mr-3 flex-shrink-0 overflow-hidden">
-          <img
-            v-if="result.cover_path"
-            :src="`http://localhost:8000${result.cover_path}`"
-            alt="Cover"
-            class="w-full h-full object-cover"
-          />
-          <div v-else class="w-full h-full flex items-center justify-center text-gray-500">
-            <span>♪</span>
+        <div class="flex items-center">
+          <!-- Miniature -->
+          <div class="w-16 h-12 bg-gray-700 rounded mr-3 flex-shrink-0 overflow-hidden">
+            <img
+              v-if="result.thumbnail"
+              :src="result.thumbnail"
+              alt="Thumbnail"
+              class="w-full h-full object-cover"
+            />
+            <div v-else class="w-full h-full flex items-center justify-center text-gray-500">
+              <span>♪</span>
+            </div>
           </div>
-        </div>
-        
-        <!-- Informations sur la piste -->
-        <div class="flex-1">
-          <div class="font-medium truncate">{{ result.title }}</div>
-          <div class="text-sm text-gray-400 truncate">{{ result.artist }}</div>
-        </div>
-        
-        <!-- Durée -->
-        <div class="text-sm text-gray-400 ml-2">
-          {{ formatTime(result.duration) }}
+          
+          <!-- Informations sur la vidéo -->
+          <div class="flex-1">
+            <div class="font-medium truncate">{{ result.title }}</div>
+            <div class="text-sm text-gray-400 truncate">{{ result.channel }}</div>
+            <div class="text-xs text-gray-500">
+              {{ formatTime(result.duration) }} • {{ result.view_count ? `${result.view_count.toLocaleString()} vues` : '' }}
+            </div>
+          </div>
+          
+          <!-- Bouton de téléchargement -->
+          <button 
+            @click.stop="downloadFromYoutube(result.url)"
+            class="ml-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+            :disabled="isUploading"
+          >
+            {{ isUploading ? 'En cours...' : 'Télécharger' }}
+          </button>
         </div>
       </div>
     </div>
@@ -240,13 +285,4 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
-</template>
-
-<script lang="ts">
-// Formatage du temps (MM:SS)
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-}
-</script> 
+</template> 

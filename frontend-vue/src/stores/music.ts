@@ -10,7 +10,7 @@ export const useMusicStore = defineStore('music', {
   }),
   
   actions: {
-    // Rechercher des musiques
+    // Rechercher des musiques dans la base de données
     async searchMusic(query: string) {
       try {
         const response = await axios.get(`${API_URL}/api/music`, {
@@ -21,6 +21,20 @@ export const useMusicStore = defineStore('music', {
         return this.searchResults;
       } catch (error) {
         console.error('Erreur lors de la recherche de musiques:', error);
+        return [];
+      }
+    },
+    
+    // Rechercher des musiques sur YouTube
+    async searchYoutube(query: string) {
+      try {
+        const response = await axios.post(`${API_URL}/api/music/search`, null, {
+          params: { query }
+        });
+        
+        return response.data;
+      } catch (error) {
+        console.error('Erreur lors de la recherche sur YouTube:', error);
         return [];
       }
     },

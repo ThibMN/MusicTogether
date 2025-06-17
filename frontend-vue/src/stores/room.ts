@@ -207,8 +207,19 @@ export const useRoomStore = defineStore('room', {
       
       this.reconnectTimer = setTimeout(() => {
         console.log(`Reconnexion à la salle ${roomCode}...`);
-        this.connectWebSocket(roomCode);
-      }, RECONNECT_DELAY);
+        try {
+          this.connectWebSocket(roomCode);
+          this.isReconnecting = false;
+        } catch (error) {
+          console.error('Erreur lors de la tentative de reconnexion:', error);
+          this.isReconnecting = false;
+          
+          // Si nous avons atteint le nombre maximum de tentatives, arrêter les reconnexions
+          if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            console.error('Nombre maximum de tentatives de reconnexion atteint');
+          }
+        }
+      }, RECONNECT_DELAY * this.reconnectAttempts); // Augmenter le délai à chaque tentative
     },
     
     // Quitter la salle
@@ -265,4 +276,4 @@ export const useRoomStore = defineStore('room', {
       this.playbackUpdateCallbacks.forEach(callback => callback(data));
     }
   }
-}); 
+});

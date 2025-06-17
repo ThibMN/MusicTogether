@@ -11,3 +11,4 @@ ffmpeg-python
 websockets
 mysqlclient
 email-validator
+pillow

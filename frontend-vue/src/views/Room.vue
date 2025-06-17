@@ -121,8 +121,13 @@ const startConnectionCheck = () => {
       console.log('Détection de déconnexion WebSocket, tentative de reconnexion...');
       error.value = 'Connexion perdue. Tentative de reconnexion...';
       
-      // Tenter de se reconnecter à la salle
-      roomStore.connectWebSocket(roomCode.value);
+      // Tenter de se reconnecter à la salle (max 5 tentatives)
+      if (roomStore.reconnectAttempts < 5) {
+        roomStore.connectWebSocket(roomCode.value);
+      } else {
+        error.value = 'Impossible de se reconnecter après plusieurs tentatives. Veuillez rafraîchir la page.';
+        clearInterval(connectionCheckInterval.value);
+      }
     } else if (roomStore.isConnected && error.value.includes('Connexion perdue')) {
       // Effacer le message d'erreur si la connexion est rétablie
       error.value = '';

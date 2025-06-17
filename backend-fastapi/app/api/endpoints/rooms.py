@@ -103,12 +103,18 @@ class ConnectionManager:
     
     async def broadcast(self, room_code: str, message: dict):
         if room_code in self.active_connections:
-            for connection in self.active_connections[room_code].values():
+            disconnected_users = []
+            for user_id, connection in list(self.active_connections[room_code].items()):
                 try:
                     await connection.send_json(message)
                 except Exception as e:
-                    logger.error(f"Erreur lors de l'envoi du message à un utilisateur dans la salle {room_code}: {str(e)}")
-                    # Ne pas lever l'exception pour ne pas interrompre les autres envois
+                    logger.error(f"Erreur lors de l'envoi du message à l'utilisateur {user_id} dans la salle {room_code}: {str(e)}")
+                    # Marquer cet utilisateur comme déconnecté
+                    disconnected_users.append(user_id)
+            
+            # Nettoyer les connexions mortes
+            for user_id in disconnected_users:
+                self.disconnect(room_code, user_id)
     
     def get_users_count(self, room_code: str) -> int:
         if room_code in self.active_connections:
@@ -160,6 +166,9 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, user_id: int,
                     await websocket.send_json({"type": "pong"})
                 else:
                     logger.warning(f"Type de message inconnu reçu: {data.get('type', 'non spécifié')}")
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket déconnecté pour l'utilisateur {user_id} dans la salle {room_code}")
+                break
             except Exception as e:
                 logger.error(f"Erreur lors du traitement d'un message WebSocket: {str(e)}")
                 if not manager.is_connected(room_code, user_id):
