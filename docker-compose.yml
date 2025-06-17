@@ -12,6 +12,7 @@ services:
       - app-network
     environment:
       - VITE_API_URL=http://localhost:8000
+      - VITE_AUTH_URL=http://localhost:8080
     depends_on:
       - fastapi
       - php
@@ -30,6 +31,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - JWT_SECRET=musictogether_secret_key_change_in_prod
     networks:
       - app-network
     depends_on:
@@ -41,11 +43,20 @@ services:
       context: ./php-auth
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8080:80"
     volumes:
       - ./php-auth:/var/www/html
+    environment:
+      - MYSQL_HOST=mariadb
+      - MYSQL_DATABASE=musicdb
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=password
+      - JWT_SECRET=musictogether_secret_key_change_in_prod
+      - APP_ENV=development
     networks:
       - app-network
+    depends_on:
+      - mariadb
 
   mariadb:
     image: mariadb:latest
@@ -92,6 +103,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - JWT_SECRET=musictogether_secret_key_change_in_prod
     networks:
       - app-network
     depends_on:
