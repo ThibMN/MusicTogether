@@ -17,6 +17,7 @@ const showResults = ref(false);
 const uploadUrl = ref('');
 const isUploading = ref(false);
 const searchTimeout = ref<number | null>(null);
+const loadingItems = ref<{[key: string]: boolean}>({});
 
 // Salle actuelle
 const currentRoom = computed(() => roomStore.currentRoom);
@@ -47,7 +48,12 @@ const performSearch = async (query: string) => {
   
   isSearching.value = true;
   try {
-    searchResults.value = await musicStore.searchYoutube(query);
+    const results = await musicStore.searchYoutube(query);
+    // Réinitialiser l'état de chargement pour chaque résultat
+    searchResults.value = results.map((result: any) => ({
+      ...result,
+      isLoading: false
+    }));
     showResults.value = true;
   } catch (error) {
     console.error('Erreur lors de la recherche:', error);
@@ -102,37 +108,48 @@ const uploadMusic = async () => {
     document.getElementById('uploadModal')?.classList.add('hidden');
   } catch (error) {
     console.error('Erreur lors du téléchargement:', error);
+    alert('Erreur lors du téléchargement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'));
   } finally {
     isUploading.value = false;
   }
 };
 
 // Télécharger une musique depuis les résultats de recherche YouTube
-const downloadFromYoutube = async (videoUrl: string) => {
+const downloadFromYoutube = async (result: any) => {
   if (!currentRoom.value) return;
-  
+  if (result.isLoading) return; // Éviter les clics multiples
+
   try {
-    isUploading.value = true;
+    // Mettre à jour l'état de chargement pour ce résultat spécifique
+    result.isLoading = true;
     
-    const result = await musicStore.uploadMusic({
-      source_url: videoUrl
+    console.log('Début du téléchargement:', result.url);
+    const uploadResult = await musicStore.uploadMusic({
+      source_url: result.url
     });
+    console.log('Résultat du téléchargement:', uploadResult);
     
     // Si le téléchargement est réussi, ajouter à la file d'attente
-    if (result && result.music_id) {
+    if (uploadResult && uploadResult.music_id) {
+      console.log('Ajout à la file d\'attente:', uploadResult.music_id);
       await queueStore.addToQueue({
         room_id: currentRoom.value.id,
-        music_id: result.music_id
+        music_id: uploadResult.music_id
       });
       
       // Fermer les résultats de recherche
       showResults.value = false;
       searchQuery.value = '';
+    } else {
+      console.error('Téléchargement réussi mais aucun music_id retourné');
+      alert('Le téléchargement a réussi mais la musique n\'a pas pu être ajoutée à la file d\'attente.');
     }
   } catch (error) {
     console.error('Erreur lors du téléchargement depuis YouTube:', error);
+    alert('Erreur lors du téléchargement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'));
   } finally {
-    isUploading.value = false;
+    // Réinitialiser l'état de chargement pour ce résultat
+    result.isLoading = false;
   }
 };
 
@@ -198,7 +215,7 @@ onUnmounted(() => {
     <!-- Résultats de recherche YouTube -->
     <div
       v-if="showResults && searchResults.length > 0"
-      class="absolute z-10 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg max-h-96 overflow-y-auto"
+      class="absolute z-50 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg max-h-96 overflow-y-auto search-results"
     >
       <div
         v-for="result in searchResults"
@@ -230,11 +247,11 @@ onUnmounted(() => {
           
           <!-- Bouton de téléchargement -->
           <button 
-            @click.stop="downloadFromYoutube(result.url)"
+            @click.stop="downloadFromYoutube(result)"
             class="ml-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
-            :disabled="isUploading"
+            :disabled="result.isLoading"
           >
-            {{ isUploading ? 'En cours...' : 'Télécharger' }}
+            {{ result.isLoading ? 'En cours...' : 'Télécharger' }}
           </button>
         </div>
       </div>
@@ -243,7 +260,7 @@ onUnmounted(() => {
     <!-- Message si aucun résultat -->
     <div
       v-if="showResults && searchResults.length === 0 && !isSearching"
-      class="absolute z-10 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg p-4 text-center text-gray-500"
+      class="absolute z-50 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg p-4 text-center text-gray-500"
     >
       Aucun résultat trouvé
     </div>
@@ -285,4 +302,23 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
-</template> 
+</template>
+
+<style scoped>
+.search-results {
+  position: fixed;
+  top: auto;
+  max-width: 100%;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 768px) {
+  .search-results {
+    max-width: 60%;
+    width: 60%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+</style> 

@@ -72,7 +72,6 @@
   - Upload audio (scan auto des métadonnées)
   - File d’attente (panneau latéral droit)
   - Chat textuel (panneau latéral gauche)
-  - Visualizer (Butterchurn) en fond, synchronisé à la musique
   - Couleurs extraites dynamiquement de la cover via Color Thief
 
 ---
