@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
@@ -8,6 +8,13 @@ const authStore = useAuthStore();
 const roomCode = ref('');
 const error = ref('');
 const username = ref('');
+
+// Message de bienvenue personnalisé en fonction de l'état d'authentification
+const welcomeMessage = computed(() => {
+  return authStore.isAuthenticated && authStore.user
+    ? `Bienvenue ${authStore.user.username} ! Prêt à écouter de la musique ?`
+    : 'Rejoignez dès maintenant une salle MusicTogether en entrant son code';
+});
 
 // Fonction pour rejoindre une salle existante ou en créer une nouvelle
 const joinRoom = async () => {
@@ -22,8 +29,9 @@ const joinRoom = async () => {
 
 const handleAuth = () => {
   if (authStore.isAuthenticated) {
-    // Si déjà connecté, rediriger vers une page de profil (à implémenter)
-    console.log('Déjà connecté en tant que:', authStore.user?.username);
+    // Si déjà connecté, se déconnecter
+    authStore.logout();
+    console.log('Déconnexion effectuée');
   } else {
     // Ouvrir la fenêtre d'authentification
     authStore.openAuthWindow();
@@ -59,17 +67,25 @@ onMounted(async () => {
       <div class="flex justify-end mb-4">
         <button 
           @click="handleAuth"
-          class="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded-full text-sm"
-          :key="authStore.isAuthenticated ? 'logged-in' : 'logged-out'"
+          :class="[
+            'px-4 py-1 rounded-full text-sm transition-colors',
+            authStore.isAuthenticated 
+              ? 'bg-red-600 hover:bg-red-700 text-white' 
+              : 'bg-green-600 hover:bg-green-700 text-white'
+          ]"
         >
-          {{ authStore.isAuthenticated ? username : 'Se connecter' }}
+          {{ authStore.isAuthenticated ? 'Se déconnecter' : 'Se connecter' }}
         </button>
       </div>
       
       <h1 class="text-4xl font-bold text-white mb-8">MusicTogether</h1>
       
+      <div v-if="authStore.isAuthenticated" class="mb-4 text-green-400">
+        Connecté en tant que <span class="font-bold">{{ username }}</span>
+      </div>
+      
       <div class="mb-8">
-        <h2 class="text-xl text-white mb-4">Rejoignez dès maintenant une salle MusicTogether en entrant son code</h2>
+        <h2 class="text-xl text-white mb-4">{{ welcomeMessage }}</h2>
         
         <div class="mb-4">
           <input 

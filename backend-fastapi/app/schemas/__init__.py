@@ -1,4 +1,4 @@
-from app.schemas.user import User, UserCreate, UserUpdate, UserLogin
+from app.schemas.user import User, UserCreate, UserUpdate, UserLogin, TokenResponse
 from app.schemas.room import Room, RoomCreate, RoomUpdate, RoomDetail
 from app.schemas.music import Music, MusicCreate, MusicUpdate, MusicUpload
 from app.schemas.queue import QueueItem, QueueItemCreate, QueueItemUpdate, QueueItemDetail

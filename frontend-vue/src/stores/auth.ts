@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
+// import Cookies from 'js-cookie' // Temporairement commenté
 
 interface User {
   id: number
@@ -7,6 +8,9 @@ interface User {
   email: string
   token: string
 }
+
+// Durée de vie du cookie en jours (7 jours)
+const COOKIE_EXPIRATION = 7
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -21,14 +25,30 @@ export const useAuthStore = defineStore('auth', {
       console.log('Setting user:', userData);
       this.user = userData
       this.isAuthenticated = true
+      
+      // Utiliser localStorage au lieu de cookies temporairement
       localStorage.setItem('auth_user', JSON.stringify(userData))
+      
+      // Stocker les données utilisateur dans un cookie sécurisé
+      /* Temporairement commenté
+      Cookies.set('auth_user', JSON.stringify(userData), { 
+        expires: COOKIE_EXPIRATION,
+        secure: window.location.protocol === 'https:',
+        sameSite: 'strict'
+      })
+      */
     },
 
     logout() {
       console.log('Logging out user');
       this.user = null
       this.isAuthenticated = false
+      
+      // Supprimer l'authentification du localStorage
       localStorage.removeItem('auth_user')
+      
+      // Supprimer le cookie d'authentification
+      // Cookies.remove('auth_user') // Temporairement commenté
     },
 
     async validateToken() {
@@ -39,7 +59,7 @@ export const useAuthStore = defineStore('auth', {
         // Récupérer le token du localStorage
         const userData = localStorage.getItem('auth_user')
         if (!userData) {
-          console.log('No stored user data found');
+          console.log('No stored user data found in localStorage');
           return false
         }
 

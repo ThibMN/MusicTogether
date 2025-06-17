@@ -1,10 +1,27 @@
 <script setup lang="ts">
 // App.vue est maintenant un conteneur pour les routes
 import { onMounted } from 'vue';
+import { useAuthStore } from './stores/auth';
 
-// Débogage
-onMounted(() => {
-  console.log('App mounted');
+// Store d'authentification
+const authStore = useAuthStore();
+
+// Vérifier l'authentification au chargement
+onMounted(async () => {
+  console.log('App mounted, checking authentication');
+  
+  try {
+    const isValid = await authStore.validateToken();
+    console.log('Token validation result:', isValid);
+    
+    if (isValid && authStore.user) {
+      console.log('User is authenticated:', authStore.user.username);
+    } else {
+      console.log('No valid authentication found');
+    }
+  } catch (error) {
+    console.error('Error validating authentication:', error);
+  }
   
   // Intercepter les erreurs non capturées
   window.addEventListener('error', (event) => {

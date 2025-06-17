@@ -1,10 +1,11 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { createRouter, createWebHistory } from 'vue-router'
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import App from './App.vue'
 import './style.css'
 import { useAuthStore } from './stores/auth'
+// import Cookies from 'js-cookie' // Temporairement commenté
+import router from './router'
 
 // Configuration d'Axios pour le debug
 axios.interceptors.request.use((request: AxiosRequestConfig) => {
@@ -22,22 +23,6 @@ axios.interceptors.response.use((response: AxiosResponse) => {
   console.error('Axios Response Error:', error.message, error.response?.status, error.config?.url);
   return Promise.reject(error);
 });
-
-// Import des routes
-import Home from './views/Home.vue'
-import Room from './views/Room.vue'
-
-// Configuration des routes
-const routes = [
-  { path: '/', component: Home },
-  { path: '/room/:roomCode', component: Room },
-]
-
-// Création du router
-const router = createRouter({
-  history: createWebHistory(),
-  routes,
-})
 
 // Création de l'application
 const app = createApp(App)
@@ -82,6 +67,13 @@ window.addEventListener('message', (event) => {
       
       console.log('✅ Utilisateur authentifié:', authStore.user?.username);
       
+      // Vérifier s'il y a une redirection en attente
+      const redirectPath = localStorage.getItem('redirect_after_login');
+      if (redirectPath) {
+        localStorage.removeItem('redirect_after_login');
+        router.push(redirectPath);
+      }
+      
       // Forcer la mise à jour de la vue si nécessaire
       setTimeout(() => {
         console.log('État après authentification:', {
@@ -102,7 +94,8 @@ window.authDebug = {
     const authStore = getAuthStore();
     return {
       user: authStore.user,
-      isAuthenticated: authStore.isAuthenticated
+      isAuthenticated: authStore.isAuthenticated,
+      // cookie: Cookies.get('auth_user') // Temporairement commenté
     };
   },
   forceUpdate: () => {
@@ -117,15 +110,6 @@ window.authDebug = {
     return 'État d\'authentification mis à jour';
   }
 };
-
-// Vérifier l'authentification au démarrage
-const authStore = getAuthStore();
-authStore.validateToken().then(isValid => {
-  console.log('Validation du token au démarrage:', isValid ? 'réussie' : 'échouée');
-  if (isValid && authStore.user) {
-    console.log('Utilisateur connecté:', authStore.user.username);
-  }
-});
 
 // Debug
 console.log('Main.ts executed, global auth listener registered');
