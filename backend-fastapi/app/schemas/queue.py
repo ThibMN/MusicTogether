@@ -6,7 +6,7 @@ from app.schemas.music import Music
 class QueueItemBase(BaseModel):
     room_id: int
     music_id: int
-    position: int
+    position: Optional[int] = None
 
 class QueueItemCreate(QueueItemBase):
     pass

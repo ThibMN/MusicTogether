@@ -97,15 +97,34 @@ const uploadMusic = async () => {
     
     // Si le téléchargement est réussi, ajouter à la file d'attente
     if (result && result.music_id) {
-      await queueStore.addToQueue({
-        room_id: currentRoom.value.id,
-        music_id: result.music_id
-      });
+      try {
+        await queueStore.addToQueue({
+          room_id: currentRoom.value.id,
+          music_id: result.music_id
+        });
+        
+        // Réinitialiser le champ et fermer le modal
+        uploadUrl.value = '';
+        document.getElementById('uploadModal')?.classList.add('hidden');
+        
+        // Afficher un message de succès
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed bottom-4 right-4 bg-green-600 text-white p-4 rounded shadow-lg z-50';
+        successMessage.textContent = 'Musique ajoutée à la file d\'attente avec succès!';
+        document.body.appendChild(successMessage);
+        
+        // Supprimer le message après 3 secondes
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      } catch (queueError) {
+        console.error('Erreur lors de l\'ajout à la file d\'attente:', queueError);
+        alert('La musique a été téléchargée mais n\'a pas pu être ajoutée à la file d\'attente: ' + 
+          (queueError instanceof Error ? queueError.message : 'Erreur inconnue'));
+      }
+    } else {
+      throw new Error('Le serveur n\'a pas retourné d\'ID de musique valide');
     }
-    
-    // Réinitialiser le champ et fermer le modal
-    uploadUrl.value = '';
-    document.getElementById('uploadModal')?.classList.add('hidden');
   } catch (error) {
     console.error('Erreur lors du téléchargement:', error);
     alert('Erreur lors du téléchargement: ' + (error instanceof Error ? error.message : 'Erreur inconnue'));
@@ -124,25 +143,40 @@ const downloadFromYoutube = async (result: any) => {
     result.isLoading = true;
     
     console.log('Début du téléchargement:', result.url);
-    const uploadResult = await musicStore.uploadMusic({
+    const response = await musicStore.uploadMusic({
       source_url: result.url
     });
-    console.log('Résultat du téléchargement:', uploadResult);
+    console.log('Réponse du téléchargement:', response);
     
-    // Si le téléchargement est réussi, ajouter à la file d'attente
-    if (uploadResult && uploadResult.music_id) {
-      console.log('Ajout à la file d\'attente:', uploadResult.music_id);
-      await queueStore.addToQueue({
-        room_id: currentRoom.value.id,
-        music_id: uploadResult.music_id
-      });
-      
-      // Fermer les résultats de recherche
-      showResults.value = false;
-      searchQuery.value = '';
+    // Si le téléchargement retourne un music_id
+    if (response && response.music_id) {
+      console.log('Ajout à la file d\'attente:', response.music_id);
+      try {
+        await queueStore.addToQueue({
+          room_id: currentRoom.value.id,
+          music_id: response.music_id
+        });
+        
+        // Fermer les résultats de recherche et afficher un message de succès
+        showResults.value = false;
+        searchQuery.value = '';
+        
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed bottom-4 right-4 bg-green-600 text-white p-4 rounded shadow-lg z-50';
+        successMessage.textContent = 'Musique ajoutée à la file d\'attente avec succès!';
+        document.body.appendChild(successMessage);
+        
+        // Supprimer le message après 3 secondes
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      } catch (queueError) {
+        console.error('Erreur lors de l\'ajout à la file d\'attente:', queueError);
+        alert('La musique a été téléchargée mais n\'a pas pu être ajoutée à la file d\'attente: ' + 
+          (queueError instanceof Error ? queueError.message : 'Erreur inconnue'));
+      }
     } else {
-      console.error('Téléchargement réussi mais aucun music_id retourné');
-      alert('Le téléchargement a réussi mais la musique n\'a pas pu être ajoutée à la file d\'attente.');
+      throw new Error('Le serveur n\'a pas retourné d\'ID de musique valide');
     }
   } catch (error) {
     console.error('Erreur lors du téléchargement depuis YouTube:', error);

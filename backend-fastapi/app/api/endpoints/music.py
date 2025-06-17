@@ -185,15 +185,13 @@ async def search_music(query: str = Query(..., description="Terme de recherche p
     results = await search_youtube(query)
     return results
 
-@router.post("/upload", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/upload", response_model=dict, status_code=status.HTTP_200_OK)
 async def upload_music(
     music_upload: MusicUpload,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
     Télécharge une musique depuis une URL (YouTube, etc.).
-    Le téléchargement est effectué en arrière-plan.
     """
     # Vérifier si l'URL est valide
     if not music_upload.source_url or not (
@@ -202,19 +200,21 @@ async def upload_music(
     ):
         raise HTTPException(status_code=400, detail="URL invalide")
     
-    # Vérifier si la musique existe déjà
+    # Vérifier si la musique existe déjà avec cette URL source
     existing_music = db.query(MusicModel).filter(MusicModel.source_url == music_upload.source_url).first()
     if existing_music:
+        print(f"Musique déjà existante avec l'ID {existing_music.id}")
         return {"message": "Cette musique existe déjà", "music_id": existing_music.id}
     
     # Simuler un ID utilisateur (à remplacer par l'authentification réelle)
     user_id = 1
     
     try:
-        # Ajouter la tâche de téléchargement en arrière-plan
-        background_tasks.add_task(download_music_from_url, music_upload.source_url, user_id, db)
-        return {"message": "Téléchargement en cours"}
+        # Exécuter le téléchargement de manière synchrone
+        db_music = await download_music_from_url(music_upload.source_url, user_id, db)
+        return {"message": "Téléchargement réussi", "music_id": db_music.id}
     except Exception as e:
+        print(f"Erreur lors du téléchargement: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur lors du téléchargement: {str(e)}")
 
 @router.get("/", response_model=List[Music])

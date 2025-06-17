@@ -10,7 +10,7 @@ from app.models import QueueItem as QueueItemModel, Room as RoomModel, Music as 
 router = APIRouter()
 
 @router.post("/", response_model=QueueItem, status_code=status.HTTP_201_CREATED)
-def add_to_queue(queue_item: QueueItemCreate, user_id: int, db: Session = Depends(get_db)):
+def add_to_queue(queue_item: QueueItemCreate, db: Session = Depends(get_db)):
     """
     Ajouter une musique à la file d'attente d'une salle.
     """
@@ -24,16 +24,22 @@ def add_to_queue(queue_item: QueueItemCreate, user_id: int, db: Session = Depend
     if not music:
         raise HTTPException(status_code=404, detail="Musique non trouvée")
     
-    # Déterminer la position dans la file d'attente
-    max_position = db.query(func.max(QueueItemModel.position)).filter(
-        QueueItemModel.room_id == queue_item.room_id
-    ).scalar() or 0
+    # Déterminer la position dans la file d'attente si non fournie
+    position = queue_item.position
+    if position is None:
+        max_position = db.query(func.max(QueueItemModel.position)).filter(
+            QueueItemModel.room_id == queue_item.room_id
+        ).scalar() or 0
+        position = max_position + 1
+    
+    # Simuler un ID utilisateur (à remplacer par l'authentification réelle)
+    user_id = 1
     
     # Créer l'élément de file d'attente
     db_queue_item = QueueItemModel(
         room_id=queue_item.room_id,
         music_id=queue_item.music_id,
-        position=max_position + 1,  # Ajouter à la fin de la file
+        position=position,
         added_by=user_id
     )
     
@@ -45,6 +51,14 @@ def add_to_queue(queue_item: QueueItemCreate, user_id: int, db: Session = Depend
     # TODO: Utiliser le ConnectionManager de rooms.py pour notifier les clients
     
     return db_queue_item
+
+@router.post("/items", response_model=QueueItem, status_code=status.HTTP_201_CREATED)
+def add_to_queue_items(queue_item: QueueItemCreate, db: Session = Depends(get_db)):
+    """
+    Endpoint alternatif pour ajouter une musique à la file d'attente d'une salle.
+    """
+    # Utiliser la même logique que l'endpoint principal
+    return add_to_queue(queue_item, db)
 
 @router.get("/room/{room_id}", response_model=List[QueueItemDetail])
 def get_room_queue(room_id: int, db: Session = Depends(get_db)):
@@ -62,6 +76,14 @@ def get_room_queue(room_id: int, db: Session = Depends(get_db)):
     ).order_by(QueueItemModel.position).all()
     
     return queue_items
+
+@router.get("/rooms/{room_id}", response_model=List[QueueItemDetail])
+def get_room_queue_alt(room_id: int, db: Session = Depends(get_db)):
+    """
+    Endpoint alternatif pour récupérer la file d'attente d'une salle.
+    """
+    # Utiliser la même logique que l'endpoint principal
+    return get_room_queue(room_id, db)
 
 @router.put("/{queue_item_id}", response_model=QueueItem)
 def update_queue_item(queue_item_id: int, item_update: QueueItemUpdate, db: Session = Depends(get_db)):

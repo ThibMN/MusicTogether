@@ -18,7 +18,8 @@ export const useRoomStore = defineStore('room', {
     isReconnecting: false,
     lastRoomCode: '' as string,
     pingTimer: null as ReturnType<typeof setInterval> | null,
-    lastPongTime: 0
+    lastPongTime: 0,
+    clientId: '' as string
   }),
   
   actions: {
@@ -298,6 +299,24 @@ export const useRoomStore = defineStore('room', {
         return;
       }
       
+      // Limiter les mises à jour trop fréquentes du même type
+      const now = Date.now();
+      const lastUpdateType = `last_${update.type}_update`;
+      const lastUpdateTime = this[lastUpdateType as keyof typeof this] as number | undefined;
+      
+      // Minimum 200ms entre les mises à jour du même type, sauf pour sync qui doit suivre son interval
+      if (lastUpdateTime && now - lastUpdateTime < 200 && update.type !== 'sync') {
+        console.log(`Mise à jour de type ${update.type} ignorée (trop fréquente)`);
+        return;
+      }
+      
+      // Mettre à jour le timestamp de dernière mise à jour
+      this[lastUpdateType as keyof typeof this] = now;
+      
+      // Ajouter un ID unique de client pour identifier la source de la mise à jour
+      update.client_id = this.clientId;
+      
+      console.log(`Envoi mise à jour WebSocket: ${JSON.stringify(update)}`);
       this.socket.send(JSON.stringify({
         type: 'playback_update',
         ...update
@@ -311,7 +330,18 @@ export const useRoomStore = defineStore('room', {
     
     // Notifier les callbacks de mise à jour de lecture
     notifyPlaybackUpdate(data: any) {
-      this.playbackUpdateCallbacks.forEach(callback => callback(data));
+      try {
+        // Ignorer les mises à jour provenant de nous-mêmes
+        if (data.client_id === this.clientId) {
+          console.log(`Mise à jour ignorée (provient du même client): ${JSON.stringify(data)}`);
+          return;
+        }
+        
+        console.log(`Traitement mise à jour WebSocket: ${JSON.stringify(data)}`);
+        this.playbackUpdateCallbacks.forEach(callback => callback(data));
+      } catch (error) {
+        console.error('Erreur lors du traitement de la mise à jour:', error);
+      }
     }
   }
 });

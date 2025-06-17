@@ -133,6 +133,11 @@ onMounted(async () => {
   console.log('Room component mounted, roomCode:', roomCode.value);
   
   try {
+    // Générer un ID client unique
+    const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    roomStore.$patch({ clientId });
+    console.log(`ID client généré: ${clientId}`);
+    
     console.log('Tentative de rejoindre la salle via le store...');
     isConnecting.value = true;
     await roomStore.joinRoom(roomCode.value);
@@ -143,6 +148,19 @@ onMounted(async () => {
     if (roomStore.currentRoom) {
       await queueStore.loadQueue(roomStore.currentRoom.id);
     }
+    
+    // Écouter les événements WebSocket pour la synchronisation
+    roomStore.onPlaybackUpdate((data) => {
+      console.log('Réception mise à jour de lecture:', data);
+      
+      // Gérer la synchronisation de la file d'attente
+      if (data.type === 'queue_change' && data.currentTrackId) {
+        queueStore.syncCurrentTrack(data.currentTrackId);
+      }
+      
+      // Les autres types de messages (play, pause, seek, track_change) 
+      // sont déjà gérés par MusicPlayer.vue
+    });
     
     // Vérifier que la connexion WebSocket est bien établie
     if (!roomStore.isConnected) {

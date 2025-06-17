@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { useMusicStore } from './music';
+import { useRoomStore } from './room';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -18,7 +19,7 @@ export const useQueueStore = defineStore('queue', {
       
       this.isLoading = true;
       try {
-        const response = await axios.get(`${API_URL}/api/queue/room/${roomId}`);
+        const response = await axios.get(`${API_URL}/api/queue/rooms/${roomId}`);
         this.queueItems = response.data;
         
         // Si la file n'est pas vide et qu'aucune piste n'est sélectionnée, sélectionner la première
@@ -36,7 +37,7 @@ export const useQueueStore = defineStore('queue', {
     // Ajouter une musique à la file d'attente
     async addToQueue(data: { room_id: number, music_id: number }) {
       try {
-        const response = await axios.post(`${API_URL}/api/queue/`, data);
+        const response = await axios.post(`${API_URL}/api/queue/items`, data);
         
         // Ajouter l'élément à la file d'attente locale
         const musicStore = useMusicStore();
@@ -51,6 +52,9 @@ export const useQueueStore = defineStore('queue', {
         if (this.queueItems.length === 1) {
           this.currentIndex = 0;
           await this.updateCurrentTrack();
+          
+          // Notifier les autres utilisateurs du changement de file d'attente
+          this.notifyQueueChange();
         }
         
         return response.data;
@@ -92,6 +96,9 @@ export const useQueueStore = defineStore('queue', {
           
           // Mettre à jour la piste actuelle
           await this.updateCurrentTrack();
+          
+          // Notifier les autres utilisateurs du changement de file d'attente
+          this.notifyQueueChange();
         }
       } catch (error) {
         console.error('Erreur lors de la suppression de la file d\'attente:', error);
@@ -129,6 +136,9 @@ export const useQueueStore = defineStore('queue', {
         } else if (sourceIndex > this.currentIndex && targetIndex <= this.currentIndex) {
           this.currentIndex++;
         }
+        
+        // Notifier les autres utilisateurs du changement de file d'attente
+        this.notifyQueueChange();
       } catch (error) {
         console.error('Erreur lors de la réorganisation de la file d\'attente:', error);
         // Recharger la file d'attente en cas d'erreur
@@ -145,7 +155,21 @@ export const useQueueStore = defineStore('queue', {
       if (index !== -1) {
         this.currentIndex = index;
         await this.updateCurrentTrack();
+        
+        // Notifier les autres utilisateurs du changement de piste
+        const roomStore = useRoomStore();
+        if (roomStore.isConnected) {
+          roomStore.sendPlaybackUpdate({
+            type: 'track_change',
+            trackId: musicId,
+            position: 0,
+            isPlaying: true
+          });
+        }
+        
+        return true;
       }
+      return false;
     },
     
     // Passer à la piste suivante
@@ -178,6 +202,39 @@ export const useQueueStore = defineStore('queue', {
       } else {
         musicStore.setCurrentTrack(null);
       }
+    },
+    
+    // Notifier les autres utilisateurs d'un changement dans la file d'attente
+    notifyQueueChange() {
+      const roomStore = useRoomStore();
+      if (roomStore.isConnected && this.queueItems.length > 0) {
+        const currentMusicId = this.currentIndex >= 0 && this.currentIndex < this.queueItems.length
+          ? this.queueItems[this.currentIndex].music.id
+          : null;
+          
+        roomStore.sendPlaybackUpdate({
+          type: 'queue_change',
+          currentTrackId: currentMusicId,
+          queueLength: this.queueItems.length
+        });
+      }
+    },
+    
+    // Synchroniser l'index courant de la file d'attente
+    syncCurrentTrack(trackId: number) {
+      if (!trackId) return false;
+      
+      // Chercher la piste dans la file d'attente
+      const index = this.queueItems.findIndex(item => item.music.id === trackId);
+      
+      // Si la piste existe dans la file d'attente et n'est pas déjà l'élément courant
+      if (index !== -1 && this.currentIndex !== index) {
+        this.currentIndex = index;
+        this.updateCurrentTrack();
+        return true;
+      }
+      
+      return false;
     }
   }
 }); 
