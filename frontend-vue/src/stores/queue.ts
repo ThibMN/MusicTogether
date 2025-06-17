@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { useMusicStore } from './music';
 import { useRoomStore } from './room';
+import { useAuthStore } from './auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -37,7 +38,17 @@ export const useQueueStore = defineStore('queue', {
     // Ajouter une musique à la file d'attente
     async addToQueue(data: { room_id: number, music_id: number }) {
       try {
-        const response = await axios.post(`${API_URL}/api/queue/items`, data);
+        // Récupérer l'ID utilisateur depuis le store d'authentification
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id;
+        
+        // Ajouter l'ID utilisateur à la requête
+        const requestData = {
+          ...data,
+          user_id: userId || null
+        };
+        
+        const response = await axios.post(`${API_URL}/api/queue/items`, requestData);
         
         // Ajouter l'élément à la file d'attente locale
         const musicStore = useMusicStore();
@@ -45,7 +56,8 @@ export const useQueueStore = defineStore('queue', {
         
         this.queueItems.push({
           ...response.data,
-          music: musicDetails
+          music: musicDetails,
+          user_id: userId // S'assurer que l'ID utilisateur est bien présent dans l'objet local
         });
         
         // Si c'est le premier élément, le sélectionner
@@ -67,6 +79,20 @@ export const useQueueStore = defineStore('queue', {
     // Supprimer une musique de la file d'attente
     async removeFromQueue(queueItemId: number) {
       try {
+        // Vérifier si l'utilisateur a le droit de supprimer cet élément
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id;
+        
+        // Trouver l'élément dans la file d'attente
+        const item = this.queueItems.find(item => item.id === queueItemId);
+        
+        // Vérifier si l'utilisateur est autorisé à supprimer cet élément
+        // (propriétaire de l'élément ou aucun propriétaire spécifié)
+        if (item && userId && item.user_id && item.user_id !== userId) {
+          console.warn("Tentative de suppression d'un élément ajouté par un autre utilisateur");
+          // On pourrait lancer une erreur ici, mais on va laisser le backend gérer les permissions
+        }
+        
         await axios.delete(`${API_URL}/api/queue/${queueItemId}`);
         
         // Trouver l'index de l'élément à supprimer

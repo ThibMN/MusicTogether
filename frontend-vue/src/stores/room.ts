@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { useAuthStore } from './auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -27,6 +28,11 @@ export const useRoomStore = defineStore('room', {
     async joinRoom(roomCode: string) {
       try {
         console.log(`Tentative de connexion à la salle: ${roomCode}`);
+        
+        // Récupérer l'ID de l'utilisateur connecté
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id;
+        
         // Vérifier si la salle existe
         const response = await axios.get(`${API_URL}/api/rooms/${roomCode}`);
         console.log('Réponse du serveur:', response.data);
@@ -54,9 +60,14 @@ export const useRoomStore = defineStore('room', {
       try {
         console.log('Tentative de création de la salle:', roomCode);
         
+        // Récupérer l'ID de l'utilisateur connecté
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id;
+        
         const response = await axios.post(`${API_URL}/api/rooms/`, {
           name: `Salle ${roomCode}`,
-          room_code: roomCode
+          room_code: roomCode,
+          creator_id: userId || null // Envoyer l'id du créateur
         });
         
         console.log('Salle créée avec succès:', response.data);
@@ -84,8 +95,9 @@ export const useRoomStore = defineStore('room', {
         // Arrêter le ping existant s'il y en a un
         this.stopPing();
         
-        // Récupérer l'ID utilisateur (à implémenter avec l'authentification)
-        const userId = 1; // Temporaire: à remplacer par l'ID réel de l'utilisateur
+        // Récupérer l'ID utilisateur depuis le store d'authentification
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id || 0; // Utiliser 0 pour les utilisateurs non connectés
         
         // Créer une nouvelle connexion
         const wsUrl = `${API_URL.replace('http', 'ws')}/api/rooms/ws/${roomCode}/${userId}`;
@@ -295,32 +307,26 @@ export const useRoomStore = defineStore('room', {
     // Envoyer une mise à jour de lecture
     sendPlaybackUpdate(update: any) {
       if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket non connecté');
+        console.error('Socket non connecté, impossible d\'envoyer la mise à jour');
         return;
       }
       
-      // Limiter les mises à jour trop fréquentes du même type
-      const now = Date.now();
-      const lastUpdateType = `last_${update.type}_update`;
-      const lastUpdateTime = this[lastUpdateType as keyof typeof this] as number | undefined;
-      
-      // Minimum 200ms entre les mises à jour du même type, sauf pour sync qui doit suivre son interval
-      if (lastUpdateTime && now - lastUpdateTime < 200 && update.type !== 'sync') {
-        console.log(`Mise à jour de type ${update.type} ignorée (trop fréquente)`);
-        return;
+      try {
+        // Récupérer l'ID de l'utilisateur connecté
+        const authStore = useAuthStore();
+        
+        // Ajouter l'ID de l'utilisateur qui envoie la mise à jour
+        const updateWithUser = {
+          ...update,
+          source_user_id: authStore.user?.id || 0,
+          timestamp: Date.now()
+        };
+        
+        console.log('Envoi de la mise à jour de lecture:', updateWithUser);
+        this.socket.send(JSON.stringify(updateWithUser));
+      } catch (error) {
+        console.error('Erreur lors de l\'envoi de la mise à jour de lecture:', error);
       }
-      
-      // Mettre à jour le timestamp de dernière mise à jour
-      this[lastUpdateType as keyof typeof this] = now;
-      
-      // Ajouter un ID unique de client pour identifier la source de la mise à jour
-      update.client_id = this.clientId;
-      
-      console.log(`Envoi mise à jour WebSocket: ${JSON.stringify(update)}`);
-      this.socket.send(JSON.stringify({
-        type: 'playback_update',
-        ...update
-      }));
     },
     
     // S'abonner aux mises à jour de lecture

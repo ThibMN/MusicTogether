@@ -32,14 +32,16 @@ def create_room(room: RoomCreate, db: Session = Depends(get_db)):
     if room.room_code:
         room_code = room.room_code
     
+    # Créer une nouvelle salle avec l'ID du créateur si disponible
     db_room = RoomModel(
         name=room.name,
-        room_code=room_code
+        room_code=room_code,
+        created_by=room.creator_id  # Utiliser created_by qui correspond au modèle
     )
     db.add(db_room)
     db.commit()
     db.refresh(db_room)
-    logger.info(f"Salle créée: {room_code}")
+    logger.info(f"Salle créée: {room_code}, créateur: {db_room.created_by}")
     return db_room
 
 @router.get("/", response_model=List[Room])

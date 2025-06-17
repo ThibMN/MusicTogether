@@ -7,6 +7,7 @@ class RoomBase(BaseModel):
 
 class RoomCreate(RoomBase):
     room_code: Optional[str] = None
+    creator_id: Optional[int] = None
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = None

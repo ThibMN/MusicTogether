@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { useRoomStore } from './room';
+import { useAuthStore } from './auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -29,8 +30,14 @@ export const useChatStore = defineStore('chat', {
     // Envoyer un message
     async sendMessage(data: { room_id: number, message: string }) {
       try {
-        // Récupérer l'ID utilisateur (à implémenter avec l'authentification)
-        const userId = 1; // Temporaire: à remplacer par l'ID réel de l'utilisateur
+        // Récupérer l'ID utilisateur depuis le store d'authentification
+        const authStore = useAuthStore();
+        const userId = authStore.user?.id;
+        
+        if (!userId) {
+          console.warn("Tentative d'envoi de message sans être connecté");
+          throw new Error("Vous devez être connecté pour envoyer des messages");
+        }
         
         const response = await axios.post(`${API_URL}/api/chat/`, {
           ...data,
