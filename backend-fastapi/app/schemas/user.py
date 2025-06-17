@@ -25,3 +25,9 @@ class User(UserBase):
 
     class Config:
         orm_mode = True
+
+class TokenResponse(BaseModel):
+    valid: bool
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    email: Optional[str] = None

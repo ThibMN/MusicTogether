@@ -15,9 +15,19 @@
           </span>
         </div>
         
-        <button @click="leaveRoom" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">
-          Quitter
-        </button>
+        <div class="flex gap-3">
+          <button 
+            @click="handleAuth"
+            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
+            :key="authStore.isAuthenticated ? 'logged-in' : 'logged-out'"
+          >
+            {{ authStore.isAuthenticated ? username : 'Se connecter' }}
+          </button>
+          
+          <button @click="leaveRoom" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">
+            Quitter
+          </button>
+        </div>
       </div>
     </header>
     
@@ -73,11 +83,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRoomStore } from '../stores/room';
 import { useMusicStore } from '../stores/music';
 import { useQueueStore } from '../stores/queue';
+import { useAuthStore } from '../stores/auth';
 import SearchBar from '../components/SearchBar.vue';
 import MusicPlayer from '../components/MusicPlayer.vue';
 import QueuePanel from '../components/QueuePanel.vue';
@@ -87,6 +98,8 @@ const router = useRouter();
 const roomStore = useRoomStore();
 const musicStore = useMusicStore();
 const queueStore = useQueueStore();
+const authStore = useAuthStore();
+const username = ref('');
 
 // Récupérer le code de la salle depuis l'URL
 const roomCode = ref(route.params.roomCode);
@@ -101,6 +114,16 @@ const chatInput = ref('');
 const chatMessages = ref([
   { username: 'Système', text: ' Bienvenue dans la salle ' + roomCode.value, color: '#1db954' }
 ]);
+
+// Forcer le rafraîchissement du nom d'utilisateur quand l'état d'authentification change
+watch(() => authStore.isAuthenticated, (newVal) => {
+  if (newVal && authStore.user) {
+    username.value = authStore.user.username;
+    console.log('État d\'authentification mis à jour dans Room, username:', username.value);
+  } else {
+    username.value = '';
+  }
+}, { immediate: true });
 
 // Vérifier périodiquement l'état de la connexion WebSocket
 const startConnectionCheck = () => {
@@ -128,9 +151,26 @@ const startConnectionCheck = () => {
   }, 5000); // Vérifier toutes les 5 secondes
 };
 
+// Fonction pour gérer l'authentification
+const handleAuth = () => {
+  if (authStore.isAuthenticated) {
+    // Si déjà connecté, rediriger vers une page de profil (à implémenter)
+    console.log('Déjà connecté en tant que:', username.value);
+  } else {
+    // Ouvrir la fenêtre d'authentification
+    authStore.openAuthWindow();
+  }
+};
+
 // Fonction pour rejoindre la salle
 onMounted(async () => {
   console.log('Room component mounted, roomCode:', roomCode.value);
+  
+  // Vérifier l'authentification
+  await authStore.validateToken();
+  if (authStore.user) {
+    username.value = authStore.user.username;
+  }
   
   try {
     // Générer un ID client unique
