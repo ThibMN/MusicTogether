@@ -68,6 +68,13 @@
       
       <!-- Lecteur (centre) -->
       <div class="flex-grow relative bg-gray-900">
+        <!-- Background cover image -->
+        <div 
+          v-if="currentTrackCover" 
+          class="absolute inset-0 bg-center bg-cover opacity-10 blur-md"
+          :style="{ backgroundImage: `url(${currentTrackCover})` }"
+        ></div>
+        
         <!-- Contenu du lecteur -->
         <div class="relative z-10 h-full">
           <MusicPlayer />
@@ -83,7 +90,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRoomStore } from '../stores/room';
 import { useMusicStore } from '../stores/music';
@@ -108,6 +115,14 @@ const connectionCheckInterval = ref(null);
 const maxReconnectAttempts = 5;
 const reconnectAttempts = ref(0);
 const isConnecting = ref(false);
+
+// URL de la cover de la piste actuelle
+const currentTrackCover = computed(() => {
+  if (musicStore.currentTrack?.cover_path) {
+    return `http://localhost:8000${musicStore.currentTrack.cover_path}`;
+  }
+  return null;
+});
 
 // État du chat
 const chatInput = ref('');
@@ -284,5 +299,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Pas de styles spécifiques nécessaires */
+/* Styles pour l'effet de fond avec la cover */
+.bg-cover {
+  background-size: cover;
+  background-position: center;
+  transition: background-image 1s ease-in-out;
+}
+
+.blur-md {
+  filter: blur(10px);
+}
 </style> 

@@ -12,3 +12,4 @@ websockets
 mysqlclient
 email-validator
 pillow
+requests

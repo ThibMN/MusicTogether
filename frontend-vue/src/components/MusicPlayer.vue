@@ -345,17 +345,17 @@ onUnmounted(() => {
   <div class="flex flex-col items-center w-full h-full p-6 overflow-y-auto">
     <!-- Cover -->
     <div 
-      class="w-64 h-64 bg-gray-800 rounded-lg mb-6 flex items-center justify-center overflow-hidden"
-      :class="{ 'animate-pulse': !currentTrack }"
+      class="w-80 h-80 bg-gray-800 rounded-lg mb-6 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-500 ease-in-out"
+      :class="{ 'animate-pulse': !currentTrack, 'scale-105': isPlaying }"
     >
       <img 
         v-if="currentTrack?.cover_path" 
         :src="`http://localhost:8000${currentTrack.cover_path}`" 
         alt="Album cover"
-        class="w-full h-full object-cover"
+        class="w-full h-full object-cover transition-opacity duration-300"
       />
       <div v-else class="text-gray-500 text-center">
-        <span class="text-4xl">♪</span>
+        <span class="text-6xl">♪</span>
       </div>
     </div>
     

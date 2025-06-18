@@ -48,7 +48,9 @@ const performSearch = async (query: string) => {
   
   isSearching.value = true;
   try {
+    console.log('Recherche en cours pour:', query);
     const results = await musicStore.searchYoutube(query);
+    console.log('Résultats de recherche reçus:', results);
     // Réinitialiser l'état de chargement pour chaque résultat
     searchResults.value = results.map((result: any) => ({
       ...result,
@@ -242,7 +244,7 @@ onUnmounted(() => {
     </div>
     
     <!-- Indicateur de recherche -->
-    <div v-if="isSearching" class="absolute top-full left-0 right-0 mt-1 p-2 text-center text-white bg-gray-800 rounded">
+    <div v-if="isSearching" class="absolute top-full left-0 right-0 mt-1 p-2 text-center text-white bg-gray-800 rounded z-50">
       Recherche en cours...
     </div>
     

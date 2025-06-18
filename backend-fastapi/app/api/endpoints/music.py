@@ -30,6 +30,8 @@ async def search_youtube(query: str, max_results: int = 5):
     Recherche des vidéos sur YouTube en utilisant yt-dlp.
     Retourne une liste de résultats avec titre, id, durée, etc.
     """
+    print(f"Recherche YouTube pour la requête: '{query}', max_results: {max_results}")
+    
     ydl_opts = {
         'quiet': True,
         'extract_flat': True,
@@ -40,9 +42,17 @@ async def search_youtube(query: str, max_results: int = 5):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Recherche sur YouTube avec le format de recherche ytsearch
-            search_results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+            search_query = f"ytsearch{max_results}:{query}"
+            print(f"Requête yt-dlp: {search_query}")
             
-            if not search_results or 'entries' not in search_results:
+            search_results = ydl.extract_info(search_query, download=False)
+            
+            if not search_results:
+                print("Aucun résultat retourné par yt-dlp")
+                return []
+                
+            if 'entries' not in search_results:
+                print("Pas d'entrées dans les résultats de recherche:", search_results.keys())
                 return []
             
             # Formater les résultats pour l'API
@@ -59,9 +69,12 @@ async def search_youtube(query: str, max_results: int = 5):
                         'view_count': entry.get('view_count', 0)
                     })
             
+            print(f"Résultats trouvés: {len(formatted_results)}")
             return formatted_results
     except Exception as e:
         print(f"Erreur lors de la recherche YouTube: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return []
 
 # Fonction pour télécharger une musique depuis une URL
@@ -144,16 +157,44 @@ async def download_music_from_url(source_url: str, user_id: int, db: Session):
                     from PIL import Image
                     import requests
                     from io import BytesIO
+                    import re
                     
-                    cover_file = AUDIO_STORAGE_PATH / f"{title}.jpg"
+                    # Créer l'entrée dans la base de données d'abord pour avoir l'ID
+                    db_music = MusicModel(
+                        title=title,
+                        artist=artist,
+                        album=album,
+                        duration=duration,
+                        file_path=str(final_file_path.relative_to(Path("/app"))),
+                        cover_path=None,  # On le mettra à jour après
+                        source_url=source_url,
+                        added_by=user_id
+                    )
+                    
+                    db.add(db_music)
+                    db.commit()
+                    db.refresh(db_music)
+                    
+                    # Utiliser l'ID comme nom de fichier pour éviter les problèmes de caractères spéciaux
+                    cover_filename = f"cover_{db_music.id}.jpg"
+                    cover_file = AUDIO_STORAGE_PATH / cover_filename
+                    
                     response = requests.get(info['thumbnail'])
                     img = Image.open(BytesIO(response.content))
                     img.save(str(cover_file))
-                    cover_path = str(cover_file.relative_to(Path("/app")))
+                    
+                    # Mettre à jour le chemin de la cover dans la base de données
+                    cover_path = f"/storage/audio/{cover_filename}"
+                    db_music.cover_path = cover_path
+                    db.commit()
+                    db.refresh(db_music)
+                    
+                    return db_music
+                    
                 except Exception as e:
                     print(f"Erreur lors de l'extraction de la couverture: {str(e)}")
             
-            # Créer l'entrée dans la base de données
+            # Si pas de miniature ou erreur, créer l'entrée sans cover
             db_music = MusicModel(
                 title=title,
                 artist=artist,
@@ -179,11 +220,20 @@ async def search_music(query: str = Query(..., description="Terme de recherche p
     """
     Recherche des musiques sur YouTube en fonction du terme de recherche.
     """
+    print(f"Requête de recherche reçue pour: '{query}'")
+    
     if not query or len(query.strip()) < 2:
         raise HTTPException(status_code=400, detail="Le terme de recherche doit contenir au moins 2 caractères")
     
-    results = await search_youtube(query)
-    return results
+    try:
+        results = await search_youtube(query)
+        print(f"Nombre de résultats trouvés: {len(results)}")
+        return results
+    except Exception as e:
+        print(f"Erreur non gérée dans l'endpoint search: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la recherche: {str(e)}")
 
 @router.post("/upload", response_model=dict, status_code=status.HTTP_200_OK)
 async def upload_music(

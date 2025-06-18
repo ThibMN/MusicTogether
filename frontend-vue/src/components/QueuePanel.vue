@@ -76,13 +76,24 @@ const onDrop = async (event: DragEvent, targetItemId: number) => {
         @click="playTrack(item.music.id)"
       >
         <!-- Cover miniature -->
-        <div class="w-10 h-10 bg-gray-700 rounded mr-3 flex-shrink-0 overflow-hidden">
+        <div class="w-14 h-14 bg-gray-700 rounded mr-3 flex-shrink-0 overflow-hidden relative">
           <img 
             v-if="item.music.cover_path" 
             :src="`http://localhost:8000${item.music.cover_path}`" 
             alt="Cover"
             class="w-full h-full object-cover"
           />
+          <div v-else class="w-full h-full flex items-center justify-center">
+            <span class="text-xl text-gray-500">♪</span>
+          </div>
+          
+          <!-- Indicateur de lecture -->
+          <div 
+            v-if="currentTrack?.id === item.music.id" 
+            class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50"
+          >
+            <span class="text-blue-400 text-xl">▶</span>
+          </div>
         </div>
         
         <!-- Informations sur la piste -->

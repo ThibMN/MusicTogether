@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
     build-essential \
     pkg-config \
+    netcat-traditional \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -22,8 +23,12 @@ RUN mkdir -p /app/storage/audio /app/storage/temp
 # Copier le reste du code
 COPY . .
 
+# Rendre le script d'entrée exécutable
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Exposer le port
 EXPOSE 8000
 
-# Commande de démarrage
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Utiliser le script d'entrée
+ENTRYPOINT ["/entrypoint.sh"]

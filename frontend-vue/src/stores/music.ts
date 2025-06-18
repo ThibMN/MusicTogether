@@ -28,13 +28,20 @@ export const useMusicStore = defineStore('music', {
     // Rechercher des musiques sur YouTube
     async searchYoutube(query: string) {
       try {
+        console.log('Envoi de la requête à l\'API:', `${API_URL}/api/music/search?query=${query}`);
         const response = await axios.post(`${API_URL}/api/music/search`, null, {
-          params: { query }
+          params: { query },
+          timeout: 10000 // Augmenter le délai d'attente à 10 secondes
         });
         
+        console.log('Réponse de l\'API search:', response);
         return response.data;
       } catch (error) {
-        console.error('Erreur lors de la recherche sur YouTube:', error);
+        console.error('Erreur détaillée lors de la recherche sur YouTube:', error);
+        if (axios.isAxiosError(error)) {
+          console.error('Statut de l\'erreur:', error.response?.status);
+          console.error('Données de l\'erreur:', error.response?.data);
+        }
         return [];
       }
     },
