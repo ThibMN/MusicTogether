@@ -13,7 +13,7 @@ class ChatMessageBase(BaseModel):
         return v
 
 class ChatMessageCreate(ChatMessageBase):
-    pass
+    user_id: int
 
 class ChatMessage(ChatMessageBase):
     id: int

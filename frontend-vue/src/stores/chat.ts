@@ -56,11 +56,23 @@ export const useChatStore = defineStore('chat', {
         
         console.log('Requête POST vers /api/chat/ avec données:', requestData);
         
-        const response = await axios.post(`${API_URL}/api/chat/`, requestData);
-        console.log('Réponse du serveur:', response.data);
-        
-        // Le message sera ajouté via WebSocket dans le store de la salle
-        return response.data;
+        try {
+          const response = await axios.post(`${API_URL}/api/chat/`, requestData);
+          console.log('Réponse du serveur:', response.data);
+          return response.data;
+        } catch (axiosError: any) {
+          console.error('Erreur Axios:', axiosError);
+          if (axiosError.response) {
+            console.error('Données de la réponse d\'erreur:', axiosError.response.data);
+            console.error('Statut de la réponse d\'erreur:', axiosError.response.status);
+            console.error('Headers de la réponse d\'erreur:', axiosError.response.headers);
+          } else if (axiosError.request) {
+            console.error('Requête envoyée mais pas de réponse:', axiosError.request);
+          } else {
+            console.error('Erreur de configuration de la requête:', axiosError.message);
+          }
+          throw axiosError;
+        }
       } catch (error) {
         console.error('Erreur détaillée lors de l\'envoi du message:', error);
         throw error;
