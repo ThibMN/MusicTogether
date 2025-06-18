@@ -189,8 +189,8 @@ const handlePlaybackUpdate = async (update: any) => {
     return;
   }
   
-  // Ignorer les messages provenant de nous-mêmes (en utilisant soit l'ID utilisateur, soit l'ID client)
-  if (update.source_user_id === 1 || (update.client_id && update.client_id === roomStore.clientId)) {
+  // Ignorer les messages provenant de nous-mêmes (en utilisant l'ID client)
+  if (update.client_id && update.client_id === roomStore.clientId) {
     console.log("Message ignoré (provient de nous-mêmes)");
     return;
   }

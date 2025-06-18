@@ -180,10 +180,8 @@ class ConnectionManager:
             disconnected_users = []
             for user_id, connection in list(self.active_connections[room_code].items()):
                 try:
-                    # Ne pas renvoyer le message à l'expéditeur pour les messages de contrôle simples
-                    if message.get("source_user_id") == user_id and message.get("type") in ["play", "pause", "seek"]:
-                        continue
-                    
+                    # Envoyer le message à tous les utilisateurs
+                    # Les filtres seront gérés côté client
                     await connection.send_json(message)
                 except Exception as e:
                     logger.error(f"Erreur lors de l'envoi du message à l'utilisateur {user_id} dans la salle {room_code}: {str(e)}")
