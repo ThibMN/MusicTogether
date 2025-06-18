@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useMusicStore } from '../stores/music';
 import { useQueueStore } from '../stores/queue';
 import { useRoomStore } from '../stores/room';
@@ -8,60 +9,92 @@ import { useRoomStore } from '../stores/room';
 const musicStore = useMusicStore();
 const queueStore = useQueueStore();
 const roomStore = useRoomStore();
+const router = useRouter();
 
 // État local
 const searchQuery = ref('');
 const isSearching = ref(false);
 const searchResults = ref<any[]>([]);
-const showResults = ref(false);
 const uploadUrl = ref('');
 const isUploading = ref(false);
-const searchTimeout = ref<number | null>(null);
-const loadingItems = ref<{[key: string]: boolean}>({});
+const showResults = ref(false);
+const isInLocalSearch = ref(false);
 
-// Salle actuelle
+// Récupérer la salle actuelle depuis le store
 const currentRoom = computed(() => roomStore.currentRoom);
 
-// Rechercher des musiques en temps réel
-watch(searchQuery, (newQuery) => {
-  // Annuler la recherche précédente
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value);
-  }
-  
-  // Si la requête est vide, masquer les résultats
-  if (!newQuery.trim()) {
-    showResults.value = false;
-    searchResults.value = [];
-    return;
-  }
-  
-  // Attendre que l'utilisateur arrête de taper
-  searchTimeout.value = setTimeout(async () => {
-    await performSearch(newQuery);
-  }, 300) as unknown as number;
-});
-
-// Effectuer la recherche
+// Effectuer une recherche
 const performSearch = async (query: string) => {
   if (!query.trim()) return;
   
+  console.log('Début de la recherche pour:', query);
   isSearching.value = true;
+  showResults.value = true;
+  
   try {
-    console.log('Recherche en cours pour:', query);
-    const results = await musicStore.searchYoutube(query);
-    console.log('Résultats de recherche reçus:', results);
-    // Réinitialiser l'état de chargement pour chaque résultat
-    searchResults.value = results.map((result: any) => ({
-      ...result,
-      isLoading: false
-    }));
-    showResults.value = true;
+    let results;
+    
+    // D'abord chercher dans la base de données locale
+    isInLocalSearch.value = true;
+    results = await musicStore.searchMusic(query);
+    console.log('Résultats de la recherche locale:', results);
+    
+    // Si aucun résultat local ou peu de résultats, chercher sur YouTube
+    if (!results || results.length < 5) {
+      console.log('Recherche YouTube pour:', query);
+      isInLocalSearch.value = false;
+      try {
+        const youtubeResults = await musicStore.searchYouTube(query);
+        console.log('Résultats YouTube reçus:', youtubeResults);
+        
+        // Ajouter un indicateur pour chaque résultat YouTube
+        const formattedResults = youtubeResults.map((result: any) => ({
+          ...result,
+          isYoutube: true,
+          isLoading: false
+        }));
+        
+        // Combiner les résultats locaux et YouTube
+        if (results && results.length > 0) {
+          results = [...results, ...formattedResults];
+        } else {
+          results = formattedResults;
+        }
+      } catch (youtubeError) {
+        console.error('Erreur lors de la recherche YouTube:', youtubeError);
+        // Continuer avec les résultats locaux seulement
+      }
+    }
+    
+    searchResults.value = results || [];
   } catch (error) {
     console.error('Erreur lors de la recherche:', error);
+    searchResults.value = [];
   } finally {
     isSearching.value = false;
   }
+};
+
+// Rechercher des musiques au fur et à mesure de la saisie (avec délai)
+let searchTimeout: number | null = null;
+const handleSearchInput = () => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+  }
+  
+  searchTimeout = window.setTimeout(async () => {
+    if (searchQuery.value.trim()) {
+      await performSearch(searchQuery.value);
+    } else {
+      showResults.value = false;
+      searchResults.value = [];
+    }
+  }, 500);
+};
+
+// Surveiller les changements dans la barre de recherche
+const watchSearchQuery = () => {
+  handleSearchInput();
 };
 
 // Rechercher des musiques (pour le bouton de recherche)
@@ -74,6 +107,7 @@ const addToQueue = async (musicId: number) => {
   if (!currentRoom.value) return;
   
   try {
+    console.log('Ajout à la file d\'attente, musicId:', musicId, 'roomId:', currentRoom.value.id);
     await queueStore.addToQueue({
       room_id: currentRoom.value.id,
       music_id: musicId
@@ -93,6 +127,7 @@ const uploadMusic = async () => {
   
   isUploading.value = true;
   try {
+    console.log('Téléchargement depuis URL:', uploadUrl.value);
     const result = await musicStore.uploadMusic({
       source_url: uploadUrl.value
     });
@@ -100,6 +135,7 @@ const uploadMusic = async () => {
     // Si le téléchargement est réussi, ajouter à la file d'attente
     if (result && result.music_id) {
       try {
+        console.log('Téléchargement réussi, ajout à la file d\'attente:', result.music_id);
         await queueStore.addToQueue({
           room_id: currentRoom.value.id,
           music_id: result.music_id
@@ -107,7 +143,7 @@ const uploadMusic = async () => {
         
         // Réinitialiser le champ et fermer le modal
         uploadUrl.value = '';
-        document.getElementById('uploadModal')?.classList.add('hidden');
+        closeUploadModal();
         
         // Afficher un message de succès
         const successMessage = document.createElement('div');
@@ -144,15 +180,15 @@ const downloadFromYoutube = async (result: any) => {
     // Mettre à jour l'état de chargement pour ce résultat spécifique
     result.isLoading = true;
     
-    console.log('Début du téléchargement:', result.url);
+    console.log('Début du téléchargement depuis YouTube:', result.url);
     const response = await musicStore.uploadMusic({
       source_url: result.url
     });
-    console.log('Réponse du téléchargement:', response);
+    console.log('Réponse du téléchargement YouTube:', response);
     
     // Si le téléchargement retourne un music_id
     if (response && response.music_id) {
-      console.log('Ajout à la file d\'attente:', response.music_id);
+      console.log('Ajout à la file d\'attente après téléchargement YouTube:', response.music_id);
       try {
         await queueStore.addToQueue({
           room_id: currentRoom.value.id,
@@ -214,6 +250,20 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', closeResults);
 });
+
+const openUploadModal = () => {
+  const modal = document.getElementById('uploadModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+  }
+};
+
+const closeUploadModal = () => {
+  const modal = document.getElementById('uploadModal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+};
 </script>
 
 <template>
@@ -225,6 +275,7 @@ onUnmounted(() => {
         type="text"
         placeholder="Rechercher une musique..."
         class="flex-1 p-3 rounded-l bg-gray-700 text-white focus:outline-none"
+        @input="watchSearchQuery"
       />
       <button
         @click="searchMusic"
@@ -237,7 +288,7 @@ onUnmounted(() => {
       <!-- Bouton d'upload -->
       <button
         class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-r flex items-center"
-        @click="() => document.getElementById('uploadModal')?.classList.remove('hidden')"
+        @click="openUploadModal"
       >
         <span>Upload</span>
       </button>
@@ -248,22 +299,23 @@ onUnmounted(() => {
       Recherche en cours...
     </div>
     
-    <!-- Résultats de recherche YouTube -->
+    <!-- Résultats de recherche -->
     <div
       v-if="showResults && searchResults.length > 0"
       class="absolute z-50 left-0 right-0 mt-1 bg-gray-800 rounded shadow-lg max-h-96 overflow-y-auto search-results"
     >
+      <!-- Résultats locaux -->
       <div
         v-for="result in searchResults"
-        :key="result.id"
+        :key="result.id || result.url"
         class="p-3 border-b border-gray-700 hover:bg-gray-700 cursor-pointer"
       >
         <div class="flex items-center">
           <!-- Miniature -->
           <div class="w-16 h-12 bg-gray-700 rounded mr-3 flex-shrink-0 overflow-hidden">
             <img
-              v-if="result.thumbnail"
-              :src="result.thumbnail"
+              v-if="result.cover_path || result.thumbnail"
+              :src="result.isYoutube ? result.thumbnail : `http://localhost:8000${result.cover_path}`"
               alt="Thumbnail"
               class="w-full h-full object-cover"
             />
@@ -272,22 +324,36 @@ onUnmounted(() => {
             </div>
           </div>
           
-          <!-- Informations sur la vidéo -->
+          <!-- Informations sur la piste -->
           <div class="flex-1">
             <div class="font-medium truncate">{{ result.title }}</div>
-            <div class="text-sm text-gray-400 truncate">{{ result.channel }}</div>
+            <div class="text-sm text-gray-400 truncate">
+              {{ result.artist || result.channel }}
+              <span v-if="result.isYoutube" class="ml-2 px-1 py-0.5 bg-red-600 rounded text-xs">YouTube</span>
+            </div>
             <div class="text-xs text-gray-500">
-              {{ formatTime(result.duration) }} • {{ result.view_count ? `${result.view_count.toLocaleString()} vues` : '' }}
+              {{ formatTime(result.duration) }}
+              <span v-if="result.isYoutube && result.view_count">
+                • {{ result.view_count.toLocaleString() }} vues
+              </span>
             </div>
           </div>
           
-          <!-- Bouton de téléchargement -->
+          <!-- Bouton d'action -->
           <button 
+            v-if="result.isYoutube"
             @click.stop="downloadFromYoutube(result)"
             class="ml-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
             :disabled="result.isLoading"
           >
             {{ result.isLoading ? 'En cours...' : 'Télécharger' }}
+          </button>
+          <button
+            v-else
+            @click.stop="addToQueue(result.id)"
+            class="ml-2 px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
+          >
+            Ajouter
           </button>
         </div>
       </div>
@@ -300,41 +366,41 @@ onUnmounted(() => {
     >
       Aucun résultat trouvé
     </div>
-    
-    <!-- Modal d'upload -->
-    <div
-      id="uploadModal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden"
-    >
-      <div class="bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full">
-        <h2 class="text-xl font-bold mb-4">Ajouter une musique</h2>
-        
-        <div class="mb-4">
-          <label class="block text-sm font-medium mb-2">URL (YouTube, SoundCloud, etc.)</label>
-          <input
-            v-model="uploadUrl"
-            type="text"
-            placeholder="https://..."
-            class="w-full p-3 rounded bg-gray-700 text-white focus:outline-none"
-            @keyup.enter="uploadMusic"
-          />
-        </div>
-        
-        <div class="flex justify-end space-x-3">
-          <button
-            @click="() => document.getElementById('uploadModal')?.classList.add('hidden')"
-            class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600"
-          >
-            Annuler
-          </button>
-          <button
-            @click="uploadMusic"
-            class="px-4 py-2 rounded bg-green-600 hover:bg-green-700"
-            :disabled="isUploading"
-          >
-            {{ isUploading ? 'Téléchargement...' : 'Ajouter' }}
-          </button>
-        </div>
+  </div>
+  
+  <!-- Modal d'upload -->
+  <div id="uploadModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full relative">
+      <h3 class="text-xl mb-4">Télécharger une musique</h3>
+      
+      <button 
+        class="absolute top-4 right-4 text-gray-400 hover:text-white"
+        @click="closeUploadModal"
+      >
+        &times;
+      </button>
+      
+      <div class="mb-4">
+        <label class="block mb-2">URL YouTube ou SoundCloud:</label>
+        <input 
+          v-model="uploadUrl"
+          type="text"
+          placeholder="https://..."
+          class="w-full p-2 bg-gray-700 rounded"
+          :disabled="isUploading"
+        />
+      </div>
+      
+      <button
+        @click="uploadMusic"
+        class="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded"
+        :disabled="isUploading || !uploadUrl.trim()"
+      >
+        {{ isUploading ? 'Téléchargement en cours...' : 'Télécharger' }}
+      </button>
+      
+      <div class="mt-4 text-sm text-gray-400">
+        Le téléchargement peut prendre quelques instants selon la taille du fichier et la vitesse de connexion.
       </div>
     </div>
   </div>

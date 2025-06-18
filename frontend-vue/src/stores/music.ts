@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -13,10 +13,12 @@ export const useMusicStore = defineStore('music', {
     // Rechercher des musiques dans la base de données
     async searchMusic(query: string) {
       try {
+        console.log('Recherche de musique avec la requête:', query);
         const response = await axios.get(`${API_URL}/api/music`, {
           params: { search: query }
         });
         
+        console.log('Résultats de recherche:', response.data);
         this.searchResults = response.data;
         return this.searchResults;
       } catch (error) {
@@ -26,51 +28,57 @@ export const useMusicStore = defineStore('music', {
     },
     
     // Rechercher des musiques sur YouTube
-    async searchYoutube(query: string) {
+    async searchYouTube(query: string) {
       try {
-        console.log('Envoi de la requête à l\'API:', `${API_URL}/api/music/search?query=${query}`);
-        const response = await axios.post(`${API_URL}/api/music/search`, null, {
-          params: { query },
-          timeout: 10000 // Augmenter le délai d'attente à 10 secondes
+        console.log('Recherche YouTube avec la requête:', query);
+        console.log('URL de la requête:', `${API_URL}/api/music/search`);
+        
+        const response = await axios.get(`${API_URL}/api/music/search`, {
+          params: { query }
         });
         
-        console.log('Réponse de l\'API search:', response);
+        console.log('Résultats de recherche YouTube:', response.data);
         return response.data;
-      } catch (error) {
-        console.error('Erreur détaillée lors de la recherche sur YouTube:', error);
+      } catch (error: unknown) {
+        console.error('Erreur lors de la recherche YouTube:', error);
         if (axios.isAxiosError(error)) {
-          console.error('Statut de l\'erreur:', error.response?.status);
-          console.error('Données de l\'erreur:', error.response?.data);
+          console.error('Détails de l\'erreur:', error.response?.data || 'Pas de données de réponse');
+          console.error('Statut de l\'erreur:', error.response?.status || 'Pas de statut');
         }
-        return [];
+        throw error;
       }
     },
     
     // Télécharger une musique depuis une URL
     async uploadMusic(data: { source_url: string }) {
       try {
+        console.log('Téléchargement de musique depuis URL:', data.source_url);
         const response = await axios.post(`${API_URL}/api/music/upload`, data);
+        console.log('Réponse du téléchargement:', response.data);
         return response.data;
       } catch (error) {
-        console.error('Erreur lors du téléchargement de la musique:', error);
+        console.error('Erreur détaillée lors du téléchargement de la musique:', error);
         throw error;
       }
-    },
-    
-    // Définir la piste actuelle
-    setCurrentTrack(track: any) {
-      this.currentTrack = track;
     },
     
     // Récupérer les détails d'une musique
     async getMusicDetails(musicId: number) {
       try {
+        console.log('Récupération des détails de la musique:', musicId);
         const response = await axios.get(`${API_URL}/api/music/${musicId}`);
+        console.log('Détails de la musique récupérés:', response.data);
         return response.data;
       } catch (error) {
         console.error(`Erreur lors de la récupération des détails de la musique ${musicId}:`, error);
         throw error;
       }
+    },
+    
+    // Mettre à jour la piste actuelle
+    setCurrentTrack(track: any) {
+      console.log('Mise à jour de la piste actuelle:', track);
+      this.currentTrack = track;
     }
   }
 }); 

@@ -28,6 +28,9 @@ export const useQueueStore = defineStore('queue', {
           this.currentIndex = 0;
           await this.updateCurrentTrack();
         }
+        
+        // Notifier les autres utilisateurs de la file d'attente actuelle
+        this.broadcastQueueUpdate();
       } catch (error) {
         console.error('Erreur lors du chargement de la file d\'attente:', error);
       } finally {
@@ -64,10 +67,10 @@ export const useQueueStore = defineStore('queue', {
         if (this.queueItems.length === 1) {
           this.currentIndex = 0;
           await this.updateCurrentTrack();
-          
-          // Notifier les autres utilisateurs du changement de file d'attente
-          this.notifyQueueChange();
         }
+        
+        // Notifier les autres utilisateurs du changement de file d'attente
+        this.broadcastQueueUpdate();
         
         return response.data;
       } catch (error) {
@@ -124,7 +127,7 @@ export const useQueueStore = defineStore('queue', {
           await this.updateCurrentTrack();
           
           // Notifier les autres utilisateurs du changement de file d'attente
-          this.notifyQueueChange();
+          this.broadcastQueueUpdate();
         }
       } catch (error) {
         console.error('Erreur lors de la suppression de la file d\'attente:', error);
@@ -164,7 +167,7 @@ export const useQueueStore = defineStore('queue', {
         }
         
         // Notifier les autres utilisateurs du changement de file d'attente
-        this.notifyQueueChange();
+        this.broadcastQueueUpdate();
       } catch (error) {
         console.error('Erreur lors de la réorganisation de la file d\'attente:', error);
         // Recharger la file d'attente en cas d'erreur
@@ -230,7 +233,7 @@ export const useQueueStore = defineStore('queue', {
       }
     },
     
-    // Notifier les autres utilisateurs d'un changement dans la file d'attente
+    // Notifier les autres utilisateurs d'un changement dans la file d'attente (notification simple)
     notifyQueueChange() {
       const roomStore = useRoomStore();
       if (roomStore.isConnected && this.queueItems.length > 0) {
@@ -244,6 +247,57 @@ export const useQueueStore = defineStore('queue', {
           queueLength: this.queueItems.length
         });
       }
+    },
+    
+    // Diffuser la file d'attente complète à tous les utilisateurs de la salle
+    broadcastQueueUpdate() {
+      const roomStore = useRoomStore();
+      if (roomStore.isConnected) {
+        const currentMusicId = this.currentIndex >= 0 && this.currentIndex < this.queueItems.length
+          ? this.queueItems[this.currentIndex].music.id
+          : null;
+          
+        roomStore.sendPlaybackUpdate({
+          type: 'queue_change',
+          currentTrackId: currentMusicId,
+          queueLength: this.queueItems.length,
+          queue: this.queueItems // Envoyer la file d'attente complète
+        });
+      }
+    },
+    
+    // Synchroniser avec la file d'attente reçue
+    syncQueueWithRemote(queue: any[]) {
+      if (!queue || !Array.isArray(queue) || queue.length === 0) return false;
+      
+      console.log('Synchronisation de la file d\'attente:', queue);
+      
+      // Sauvegarder le morceau actuel s'il existe
+      const currentTrackId = this.currentIndex >= 0 && this.currentIndex < this.queueItems.length
+        ? this.queueItems[this.currentIndex].music.id
+        : null;
+      
+      // Mettre à jour la file d'attente locale
+      this.queueItems = queue;
+      
+      // Si nous avions un morceau actuel, essayer de trouver son nouvel index
+      if (currentTrackId) {
+        const newIndex = this.queueItems.findIndex(item => item.music.id === currentTrackId);
+        if (newIndex !== -1) {
+          this.currentIndex = newIndex;
+        } else {
+          // Si le morceau n'est plus dans la file d'attente, prendre le premier
+          this.currentIndex = this.queueItems.length > 0 ? 0 : -1;
+        }
+      } else {
+        // Si aucun morceau n'était actif, prendre le premier
+        this.currentIndex = this.queueItems.length > 0 ? 0 : -1;
+      }
+      
+      // Mettre à jour le morceau actuel
+      this.updateCurrentTrack();
+      
+      return true;
     },
     
     // Synchroniser l'index courant de la file d'attente

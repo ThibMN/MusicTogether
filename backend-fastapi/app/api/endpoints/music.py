@@ -216,6 +216,7 @@ async def download_music_from_url(source_url: str, user_id: int, db: Session):
         raise
 
 @router.post("/search", response_model=List[dict])
+@router.get("/search", response_model=List[dict])
 async def search_music(query: str = Query(..., description="Terme de recherche pour trouver des musiques sur YouTube")):
     """
     Recherche des musiques sur YouTube en fonction du terme de recherche.

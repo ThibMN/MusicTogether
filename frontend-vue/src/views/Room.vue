@@ -13,6 +13,9 @@
           <span class="ml-4 bg-blue-600 px-3 py-1 rounded-full text-sm">
             Room: {{ roomCode }}
           </span>
+          <span v-if="connectedUsers" class="ml-2 bg-green-600 px-3 py-1 rounded-full text-sm">
+            {{ connectedUsers }} utilisateurs
+          </span>
         </div>
         
         <div class="flex gap-3">
@@ -39,31 +42,8 @@
     <!-- Contenu principal -->
     <div class="flex flex-1 overflow-hidden">
       <!-- Chat (panneau gauche) -->
-      <div class="w-1/4 bg-gray-800 p-4 flex flex-col">
-        <h2 class="text-lg font-bold mb-4">Chat</h2>
-        
-        <div class="flex-grow overflow-y-auto mb-4">
-          <div v-for="(message, index) in chatMessages" :key="index" class="mb-2">
-            <span class="font-bold" :style="{ color: message.color }">{{ message.username }}:</span>
-            <span class="text-white">{{ message.text }}</span>
-          </div>
-        </div>
-        
-        <div class="flex">
-          <input 
-            v-model="chatInput" 
-            type="text" 
-            placeholder="Envoyer un message..." 
-            class="flex-grow p-2 rounded-l bg-gray-700 text-white"
-            @keyup.enter="sendChatMessage"
-          />
-          <button 
-            @click="sendChatMessage" 
-            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-r"
-          >
-            Envoyer
-          </button>
-        </div>
+      <div class="w-1/4 bg-gray-800">
+        <ChatPanel />
       </div>
       
       <!-- Lecteur (centre) -->
@@ -96,9 +76,11 @@ import { useRoomStore } from '../stores/room';
 import { useMusicStore } from '../stores/music';
 import { useQueueStore } from '../stores/queue';
 import { useAuthStore } from '../stores/auth';
+import { useChatStore } from '../stores/chat';
 import SearchBar from '../components/SearchBar.vue';
 import MusicPlayer from '../components/MusicPlayer.vue';
 import QueuePanel from '../components/QueuePanel.vue';
+import ChatPanel from '../components/ChatPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -106,6 +88,7 @@ const roomStore = useRoomStore();
 const musicStore = useMusicStore();
 const queueStore = useQueueStore();
 const authStore = useAuthStore();
+const chatStore = useChatStore();
 const username = ref('');
 
 // Récupérer le code de la salle depuis l'URL
@@ -115,6 +98,7 @@ const connectionCheckInterval = ref(null);
 const maxReconnectAttempts = 5;
 const reconnectAttempts = ref(0);
 const isConnecting = ref(false);
+const connectedUsers = ref(0);
 
 // URL de la cover de la piste actuelle
 const currentTrackCover = computed(() => {
@@ -124,11 +108,8 @@ const currentTrackCover = computed(() => {
   return null;
 });
 
-// État du chat
-const chatInput = ref('');
-const chatMessages = ref([
-  { username: 'Système', text: ' Bienvenue dans la salle ' + roomCode.value, color: '#1db954' }
-]);
+// API URL
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // Forcer le rafraîchissement du nom d'utilisateur quand l'état d'authentification change
 watch(() => authStore.isAuthenticated, (newVal) => {
@@ -199,22 +180,32 @@ onMounted(async () => {
     isConnecting.value = false;
     console.log('Salle rejointe avec succès:', roomStore.currentRoom);
     
-    // Charger la file d'attente
+    // Initialiser le nombre d'utilisateurs connectés
+    if (roomStore.currentRoom && roomStore.currentRoom.active_users) {
+      connectedUsers.value = roomStore.currentRoom.active_users;
+    }
+    
+    // Charger la file d'attente et les messages
     if (roomStore.currentRoom) {
+      // Charger la file d'attente des morceaux
       await queueStore.loadQueue(roomStore.currentRoom.id);
+      
+      // Charger l'historique des messages
+      await chatStore.loadMessages(roomStore.currentRoom.id);
     }
     
     // Écouter les événements WebSocket pour la synchronisation
     roomStore.onPlaybackUpdate((data) => {
       console.log('Réception mise à jour de lecture:', data);
       
-      // Gérer la synchronisation de la file d'attente
-      if (data.type === 'queue_change' && data.currentTrackId) {
-        queueStore.syncCurrentTrack(data.currentTrackId);
+      // Mettre à jour le nombre d'utilisateurs connectés
+      if ((data.type === 'user_joined' || data.type === 'user_left') && data.users_count) {
+        connectedUsers.value = data.users_count;
       }
       
-      // Les autres types de messages (play, pause, seek, track_change) 
-      // sont déjà gérés par MusicPlayer.vue
+      // Les messages de chat sont gérés par le ChatStore
+      // Les mises à jour de la file sont gérées par le QueueStore
+      // Les mises à jour de lecture sont gérées par le MusicPlayer
     });
     
     // Vérifier que la connexion WebSocket est bien établie
@@ -271,20 +262,6 @@ onMounted(async () => {
 const leaveRoom = () => {
   roomStore.leaveRoom();
   router.push('/');
-};
-
-// Fonction pour envoyer un message dans le chat
-const sendChatMessage = () => {
-  if (!chatInput.value.trim()) return;
-  
-  const message = {
-    username: 'Vous',
-    text: ' ' + chatInput.value,
-    color: '#3b82f6'
-  };
-  
-  chatMessages.value.push(message);
-  chatInput.value = '';
 };
 
 // Nettoyer avant de quitter la page

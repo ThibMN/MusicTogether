@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 import { useAuthStore } from './auth';
+import { useQueueStore } from './queue';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -162,13 +163,34 @@ export const useRoomStore = defineStore('room', {
                 case 'play':
                 case 'pause':
                 case 'seek':
+                case 'track_change':
                   // Notifier les callbacks de mise à jour de lecture
                   this.notifyPlaybackUpdate(data);
+                  break;
+                
+                case 'queue_change':
+                  // Gérer les changements dans la file d'attente
+                  this.handleQueueChange(data);
+                  break;
+                
+                case 'queue_sync':
+                  // Synchroniser la file d'attente
+                  this.synchronizeQueue(data);
                   break;
                   
                 case 'pong':
                   // Mettre à jour le timestamp du dernier pong reçu
                   this.lastPongTime = Date.now();
+                  break;
+                
+                case 'chat_message':
+                  // Le message de chat sera traité par le composant Room
+                  this.notifyPlaybackUpdate(data);
+                  break;
+                  
+                case 'playback_state_response':
+                  // Synchroniser l'état de lecture initial
+                  this.notifyPlaybackUpdate(data);
                   break;
               }
             } catch (error) {
@@ -249,83 +271,78 @@ export const useRoomStore = defineStore('room', {
         clearTimeout(this.reconnectTimer);
       }
       
-      this.reconnectTimer = setTimeout(() => {
-        console.log(`Reconnexion à la salle ${roomCode}...`);
+      this.reconnectTimer = setTimeout(async () => {
         try {
-          this.connectWebSocket(roomCode)
-            .then(() => {
-              this.isReconnecting = false;
-              console.log('Reconnexion réussie');
-            })
-            .catch(error => {
-              console.error('Erreur lors de la tentative de reconnexion:', error);
-              this.isReconnecting = false;
-              
-              // Si nous avons atteint le nombre maximum de tentatives, arrêter les reconnexions
-              if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                console.error('Nombre maximum de tentatives de reconnexion atteint');
-              }
-            });
-        } catch (error) {
-          console.error('Erreur lors de la tentative de reconnexion:', error);
+          await this.connectWebSocket(roomCode);
+          console.log('Reconnexion WebSocket réussie');
           this.isReconnecting = false;
+          
+          // Demander une mise à jour de l'état de lecture et de la file d'attente
+          this.requestStateUpdate();
+        } catch (error) {
+          console.error('Erreur lors de la reconnexion WebSocket:', error);
+          this.isReconnecting = false;
+          
+          // Tenter une nouvelle reconnexion si on n'a pas atteint le nombre maximum de tentatives
+          if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            this.attemptReconnect(roomCode);
+          }
         }
-      }, RECONNECT_DELAY * this.reconnectAttempts); // Augmenter le délai à chaque tentative
+      }, RECONNECT_DELAY);
     },
     
-    // Quitter la salle
+    // Quitter la salle actuelle
     leaveRoom() {
-      // Annuler toute tentative de reconnexion en cours
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = null;
+      console.log('Quitter la salle...');
+      
+      // Fermer la connexion WebSocket
+      if (this.socket) {
+        this.socket.close(1000, 'Déconnexion volontaire'); // 1000 = code de fermeture normale
+        this.socket = null;
       }
       
       // Arrêter le ping
       this.stopPing();
       
-      this.isReconnecting = false;
-      this.reconnectAttempts = 0;
-      
-      if (this.socket) {
-        this.socket.close();
-        this.socket = null;
+      // Arrêter toute tentative de reconnexion en cours
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
       }
       
-      this.currentRoom = null;
+      // Réinitialiser l'état
       this.isConnected = false;
-      this.users = [];
+      this.currentRoom = null;
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
       this.lastRoomCode = '';
     },
     
-    // Mettre à jour la liste des utilisateurs
+    // Mettre à jour la liste des utilisateurs connectés
     updateUsersList(data: any) {
-      // À implémenter: mettre à jour la liste des utilisateurs connectés
-      console.log('Utilisateurs connectés:', data.users_count);
+      console.log('Mise à jour de la liste des utilisateurs:', data);
+      
+      // Ici, on peut mettre à jour une liste d'utilisateurs connectés
+      // pour afficher dans l'interface qui est en ligne
     },
     
-    // Envoyer une mise à jour de lecture
+    // Envoyer une mise à jour de lecture à tous les utilisateurs
     sendPlaybackUpdate(update: any) {
-      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-        console.error('Socket non connecté, impossible d\'envoyer la mise à jour');
+      if (!this.isConnected || !this.socket) {
+        console.warn('Impossible d\'envoyer une mise à jour: non connecté');
         return;
       }
       
+      // Ajouter l'ID client pour identifier la source
+      const updateWithClientId = {
+        ...update,
+        client_id: this.clientId
+      };
+      
       try {
-        // Récupérer l'ID de l'utilisateur connecté
-        const authStore = useAuthStore();
-        
-        // Ajouter l'ID de l'utilisateur qui envoie la mise à jour
-        const updateWithUser = {
-          ...update,
-          source_user_id: authStore.user?.id || 0,
-          timestamp: Date.now()
-        };
-        
-        console.log('Envoi de la mise à jour de lecture:', updateWithUser);
-        this.socket.send(JSON.stringify(updateWithUser));
+        this.socket.send(JSON.stringify(updateWithClientId));
       } catch (error) {
-        console.error('Erreur lors de l\'envoi de la mise à jour de lecture:', error);
+        console.error('Erreur lors de l\'envoi de la mise à jour:', error);
       }
     },
     
@@ -336,18 +353,58 @@ export const useRoomStore = defineStore('room', {
     
     // Notifier les callbacks de mise à jour de lecture
     notifyPlaybackUpdate(data: any) {
-      try {
-        // Ignorer les mises à jour provenant de nous-mêmes
-        if (data.client_id === this.clientId) {
-          console.log(`Mise à jour ignorée (provient du même client): ${JSON.stringify(data)}`);
-          return;
+      this.playbackUpdateCallbacks.forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error('Erreur dans un callback de mise à jour de lecture:', error);
         }
-        
-        console.log(`Traitement mise à jour WebSocket: ${JSON.stringify(data)}`);
-        this.playbackUpdateCallbacks.forEach(callback => callback(data));
-      } catch (error) {
-        console.error('Erreur lors du traitement de la mise à jour:', error);
+      });
+    },
+    
+    // Gérer les changements dans la file d'attente
+    handleQueueChange(data: any) {
+      console.log('Changement dans la file d\'attente reçu:', data);
+      
+      // Synchroniser la file d'attente si disponible
+      if (data.queue) {
+        const queueStore = useQueueStore();
+        queueStore.syncQueueWithRemote(data.queue);
+      } else if (data.currentTrackId) {
+        // Sinon, synchroniser juste la piste actuelle
+        const queueStore = useQueueStore();
+        queueStore.syncCurrentTrack(data.currentTrackId);
       }
+      
+      // Notifier les callbacks
+      this.notifyPlaybackUpdate(data);
+    },
+    
+    // Synchroniser la file d'attente
+    synchronizeQueue(data: any) {
+      if (data.queue) {
+        const queueStore = useQueueStore();
+        queueStore.syncQueueWithRemote(data.queue);
+      }
+    },
+    
+    // Demander une mise à jour de l'état après reconnexion
+    requestStateUpdate() {
+      if (!this.isConnected || !this.socket) {
+        console.warn('Impossible de demander une mise à jour: non connecté');
+        return;
+      }
+      
+      // Demander l'état de lecture
+      this.socket.send(JSON.stringify({
+        type: 'request_playback_state',
+        for_user_id: this.clientId
+      }));
+      
+      // Demander la file d'attente
+      this.socket.send(JSON.stringify({
+        type: 'request_queue'
+      }));
     }
   }
 });
