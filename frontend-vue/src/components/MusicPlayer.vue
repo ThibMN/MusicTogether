@@ -506,7 +506,7 @@ onUnmounted(() => {
       <div 
         class="flex-1 h-1 bg-gray-700 rounded overflow-hidden cursor-pointer"
         @click="(e) => {
-          const rect = e.target.getBoundingClientRect();
+          const rect = (e.target as HTMLElement).getBoundingClientRect();
           const percent = (e.clientX - rect.left) / rect.width;
           seekTo(percent * duration);
         }"
