@@ -1,3 +1,7 @@
+<?php
+ob_start();
+session_start();
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -8,13 +12,7 @@
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
     <div class="w-full max-w-md p-6 bg-gray-800 rounded-lg shadow-xl">
-        <?php 
-        // Debug
-        echo "<p class='mb-4 text-green-500'>PHP fonctionne! Version: " . phpversion() . "</p>";
-        
-        // Inclure le router
-        include 'auth/router.php'; 
-        ?>
+        <?php include 'auth/router.php'; ?>
     </div>
 
     <!-- La fonction redirectToApp n'est plus nécessaire ici car elle est définie 

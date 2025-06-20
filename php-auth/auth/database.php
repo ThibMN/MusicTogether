@@ -1,13 +1,11 @@
 <?php
 // Connexion à la base de données
-echo "<p class='mb-2 text-yellow-400'>Tentative de connexion à la base de données...</p>";
 
 function getDbConnection() {
     try {
         $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME;
         $conn = new PDO($dsn, DB_USER, DB_PASS);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        echo "<p class='mb-2 text-green-500'>Connexion à la base de données réussie!</p>";
         return $conn;
     } catch (PDOException $e) {
         echo "<p class='mb-2 text-red-500'>Erreur de connexion à la base de données: " . $e->getMessage() . "</p>";
@@ -30,7 +28,6 @@ function initDatabase() {
         try {
             $sql = "SELECT 1 FROM users LIMIT 1";
             $conn->query($sql);
-            echo "<p class='mb-2 text-green-500'>La table 'users' existe.</p>";
         } catch (PDOException $e) {
             echo "<p class='mb-2 text-red-500'>La table 'users' n'existe pas: " . $e->getMessage() . "</p>";
             echo "<p class='mb-2 text-yellow-400'>Tentative de création de la table 'users'...</p>";
@@ -45,7 +42,6 @@ function initDatabase() {
                 last_login DATETIME NULL
             )";
             $conn->exec($sql);
-            echo "<p class='mb-2 text-green-500'>Table 'users' créée avec succès.</p>";
         }
     } catch (Exception $e) {
         echo "<p class='mb-2 text-red-500'>Erreur lors de l'initialisation de la base de données: " . $e->getMessage() . "</p>";

@@ -1,9 +1,9 @@
 <?php
 // Configuration de l'authentification
-// Debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-echo "<p class='mb-2 text-yellow-400'>Fichier config.php chargé!</p>";
+// Masquer les erreurs PHP à l'utilisateur final
+error_reporting(0);
+ini_set('display_errors', 0);
+
 
 // URL de base de l'API FastAPI
 define('API_URL', 'http://backend:8000/api');

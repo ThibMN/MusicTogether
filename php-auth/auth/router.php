@@ -1,11 +1,5 @@
 <?php
 // Router simple pour les pages d'authentification
-// Démarrer la session avant tout output
-ob_start(); // Démarre la mise en tampon de sortie pour éviter les erreurs d'en-têtes
-session_start();
-
-// Tout output après ce point ne perturbera pas les en-têtes
-echo "<p class='mb-2 text-blue-500'>Router PHP initialisé</p>";
 
 // Vérification du chemin des fichiers
 if (!file_exists('auth/config.php')) {
@@ -26,7 +20,6 @@ require_once 'auth/database.php';
 
 // Router basique
 $action = $_GET['action'] ?? 'login';
-echo "<p class='mb-2 text-blue-500'>Action demandée: " . htmlspecialchars($action) . "</p>";
 
 switch ($action) {
     case 'login':
