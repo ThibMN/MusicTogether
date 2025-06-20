@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from sqlalchemy import or_
 import yt_dlp
+import mutagen
 
 from app.db.database import get_db
 from app.schemas import Music, MusicCreate, MusicUpdate, MusicUpload
@@ -267,6 +268,71 @@ async def upload_music(
     except Exception as e:
         print(f"Erreur lors du téléchargement: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur lors du téléchargement: {str(e)}")
+
+@router.post("/upload-file", response_model=dict, status_code=status.HTTP_200_OK)
+async def upload_music_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload d'un fichier audio local (mp3, wav, etc.).
+    """
+    # Vérifier l'extension
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"]:
+        raise HTTPException(status_code=400, detail="Format de fichier non supporté")
+
+    # Générer un nom de fichier unique
+    import uuid
+    unique_id = str(uuid.uuid4())
+    new_filename = f"{unique_id}{ext}"
+    dest_path = AUDIO_STORAGE_PATH / new_filename
+
+    # Sauvegarder le fichier
+    with open(dest_path, "wb") as buffer:
+        buffer.write(await file.read())
+
+    # Extraire les métadonnées
+    title = os.path.splitext(filename)[0]
+    artist = "Inconnu"
+    album = None
+    duration = 0.0
+    try:
+        audio = mutagen.File(dest_path)
+        if audio:
+            duration = float(audio.info.length) if hasattr(audio.info, 'length') else 0.0
+            if audio.tags:
+                title = audio.tags.get('TIT2', title)
+                artist = audio.tags.get('TPE1', artist)
+                album = audio.tags.get('TALB', album)
+                # Certains formats utilisent d'autres clés
+                if isinstance(title, list):
+                    title = title[0]
+                if isinstance(artist, list):
+                    artist = artist[0]
+                if isinstance(album, list):
+                    album = album[0]
+    except Exception as e:
+        print(f"Erreur extraction métadonnées: {e}")
+
+    # Créer l'entrée en base
+    user_id = 1  # TODO: remplacer par l'utilisateur authentifié
+    db_music = MusicModel(
+        title=str(title),
+        artist=str(artist),
+        album=str(album) if album else None,
+        duration=duration,
+        file_path=str(dest_path.relative_to(Path("/app"))),
+        cover_path=None,
+        source_url=None,
+        added_by=user_id
+    )
+    db.add(db_music)
+    db.commit()
+    db.refresh(db_music)
+
+    return {"message": "Upload réussi", "music_id": db_music.id}
 
 @router.get("/", response_model=List[Music])
 def read_music(

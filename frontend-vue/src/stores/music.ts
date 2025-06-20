@@ -62,6 +62,24 @@ export const useMusicStore = defineStore('music', {
       }
     },
     
+    // Télécharger une musique depuis un fichier local
+    async uploadMusicFile(file: File) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await axios.post(`${API_URL}/api/music/upload-file`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        console.log('Réponse de l\'upload fichier:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Erreur lors de l\'upload du fichier audio:', error);
+        throw error;
+      }
+    },
+    
     // Récupérer les détails d'une musique
     async getMusicDetails(musicId: number) {
       try {

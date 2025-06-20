@@ -13,3 +13,4 @@ mysqlclient
 email-validator
 pillow
 requests
+mutagen

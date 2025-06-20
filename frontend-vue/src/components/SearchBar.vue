@@ -19,6 +19,8 @@ const uploadUrl = ref('');
 const isUploading = ref(false);
 const showResults = ref(false);
 const isInLocalSearch = ref(false);
+const uploadFile = ref<File|null>(null);
+const isUploadingFile = ref(false);
 
 // Récupérer la salle actuelle depuis le store
 const currentRoom = computed(() => roomStore.currentRoom);
@@ -264,6 +266,50 @@ const closeUploadModal = () => {
     modal.classList.add('hidden');
   }
 };
+
+// Nouvelle fonction pour upload fichier local
+const uploadMusicFile = async () => {
+  if (!uploadFile.value || !currentRoom.value) return;
+  isUploadingFile.value = true;
+  try {
+    const result = await musicStore.uploadMusicFile(uploadFile.value);
+    if (result && result.music_id) {
+      try {
+        await queueStore.addToQueue({
+          room_id: currentRoom.value.id,
+          music_id: result.music_id
+        });
+        uploadFile.value = null;
+        closeUploadModal();
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed bottom-4 right-4 bg-green-600 text-white p-4 rounded shadow-lg z-50';
+        successMessage.textContent = 'Fichier audio ajouté à la file d\'attente avec succès!';
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      } catch (queueError) {
+        alert('Le fichier a été uploadé mais n\'a pas pu être ajouté à la file d\'attente: ' + (queueError instanceof Error ? queueError.message : 'Erreur inconnue'));
+      }
+    } else {
+      throw new Error('Le serveur n\'a pas retourné d\'ID de musique valide');
+    }
+  } catch (error) {
+    alert('Erreur lors de l\'upload du fichier: ' + (error instanceof Error ? error.message : 'Erreur inconnue'));
+  } finally {
+    isUploadingFile.value = false;
+  }
+};
+
+// Handler pour l'input file
+const handleFileChange = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  if (target && target.files && target.files.length > 0) {
+    uploadFile.value = target.files[0];
+  } else {
+    uploadFile.value = null;
+  }
+};
 </script>
 
 <template>
@@ -393,10 +439,32 @@ const closeUploadModal = () => {
       
       <button
         @click="uploadMusic"
-        class="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded"
+        class="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded mb-4"
         :disabled="isUploading || !uploadUrl.trim()"
       >
-        {{ isUploading ? 'Téléchargement en cours...' : 'Télécharger' }}
+        {{ isUploading ? 'Téléchargement en cours...' : 'Télécharger depuis une URL' }}
+      </button>
+      
+      <div class="my-4 flex items-center justify-center">
+        <span class="text-gray-400 text-sm">Ou</span>
+      </div>
+      
+      <div class="mb-4">
+        <label class="block mb-2">Fichier audio local :</label>
+        <input 
+          type="file"
+          accept="audio/*"
+          @change="handleFileChange"
+          :disabled="isUploadingFile"
+        />
+      </div>
+      
+      <button
+        @click="uploadMusicFile"
+        class="w-full py-2 bg-green-600 hover:bg-green-700 rounded"
+        :disabled="isUploadingFile || !uploadFile"
+      >
+        {{ isUploadingFile ? 'Upload en cours...' : 'Uploader le fichier' }}
       </button>
       
       <div class="mt-4 text-sm text-gray-400">
