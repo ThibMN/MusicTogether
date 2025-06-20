@@ -67,7 +67,11 @@ def create_message(message: ChatMessageCreate, db: Session = Depends(get_db)):
             }
         }
         logger.info(f"Diffusion du message via WebSocket: {websocket_payload}")
-        room_manager.broadcast(room_code, websocket_payload)
+        try:
+            room_manager.broadcast(room_code, websocket_payload)
+            logger.info(f"Message WebSocket envoyé avec succès pour le message ID: {db_message.id}")
+        except Exception as e:
+            logger.error(f"Erreur lors de la diffusion du message WebSocket: {str(e)}")
         
         return db_message
     except Exception as e:

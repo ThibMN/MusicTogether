@@ -129,13 +129,20 @@ class ConnectionManager:
         if room_code in self.room_states:
             state = self.room_states[room_code]
             try:
+                # Générer un ID client côté serveur pour ce message
+                client_id = f"server_{int(time.time())}"
+                
                 logger.info(f"Envoi de l'état actuel à l'utilisateur {user_id}: {state}")
                 await websocket.send_json({
                     "type": "playback_state_response",
                     "trackId": state.get("trackId"),
                     "position": state.get("position"),
                     "isPlaying": state.get("isPlaying"),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "client_id": client_id,
+                    # Ajouter des informations sur qui contrôle actuellement la lecture
+                    "last_controller_id": state.get("last_controller_id"),
+                    "last_client_id": state.get("last_client_id")
                 })
             except Exception as e:
                 logger.error(f"Erreur lors de l'envoi de l'état actuel: {str(e)}")
@@ -143,13 +150,29 @@ class ConnectionManager:
         # Si nous avons la file d'attente, l'envoyer aussi
         if room_code in self.room_queues:
             try:
+                # Générer un ID client côté serveur pour ce message
+                client_id = f"server_queue_{int(time.time())}"
+                
                 await websocket.send_json({
                     "type": "queue_sync",
                     "queue": self.room_queues[room_code],
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "client_id": client_id
                 })
             except Exception as e:
                 logger.error(f"Erreur lors de l'envoi de la file d'attente: {str(e)}")
+                
+        # Informer le nouvel utilisateur qu'il peut contrôler la lecture
+        try:
+            await websocket.send_json({
+                "type": "control_permission",
+                "can_control": True,
+                "timestamp": time.time(),
+                "client_id": f"server_permission_{int(time.time())}"
+            })
+            logger.info(f"Permission de contrôle envoyée à l'utilisateur {user_id}")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'envoi des permissions de contrôle: {str(e)}")
     
     def disconnect(self, room_code: str, user_id: int):
         if room_code in self.active_connections and user_id in self.active_connections[room_code]:
@@ -201,7 +224,17 @@ class ConnectionManager:
             self.room_states[room_code] = {}
         
         # Mise à jour de l'état selon le type de message
-        if msg_type in ["play", "pause", "sync", "track_change"]:
+        if msg_type in ["play", "pause", "sync", "track_change", "seek"]:
+            # Enregistrer l'ID de l'utilisateur qui a effectué l'action
+            source_user_id = message.get("source_user_id")
+            if source_user_id:
+                self.room_states[room_code]["last_controller_id"] = source_user_id
+                
+            # Enregistrer l'ID client qui a effectué l'action
+            client_id = message.get("client_id")
+            if client_id:
+                self.room_states[room_code]["last_client_id"] = client_id
+            
             # Mettre à jour l'ID de piste si présent
             if "trackId" in message:
                 self.room_states[room_code]["trackId"] = message["trackId"]
@@ -221,7 +254,19 @@ class ConnectionManager:
             # Mettre à jour le timestamp
             self.room_states[room_code]["timestamp"] = time.time()
             
-            logger.info(f"État de la salle {room_code} mis à jour: {self.room_states[room_code]}")
+            # Log détaillé
+            log_details = f"État de la salle {room_code} mis à jour: " + \
+                         f"type={msg_type}, " + \
+                         f"trackId={self.room_states[room_code].get('trackId')}, " + \
+                         f"position={self.room_states[room_code].get('position')}, " + \
+                         f"isPlaying={self.room_states[room_code].get('isPlaying')}"
+            
+            if source_user_id:
+                log_details += f", par user_id={source_user_id}"
+            if client_id:
+                log_details += f", client_id={client_id}"
+                
+            logger.info(log_details)
     
     def _update_room_queue(self, room_code: str, message: dict):
         """Met à jour la file d'attente de la salle."""

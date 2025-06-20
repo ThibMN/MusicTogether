@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { useAuthStore } from './auth';
 import { useQueueStore } from './queue';
+import { useChatStore } from './chat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -15,6 +16,7 @@ export const useRoomStore = defineStore('room', {
     socket: null as WebSocket | null,
     users: [] as any[],
     playbackUpdateCallbacks: [] as Function[],
+    chatMessageCallbacks: [] as Function[],
     reconnectAttempts: 0,
     reconnectTimer: null as ReturnType<typeof setTimeout> | null,
     isReconnecting: false,
@@ -149,8 +151,45 @@ export const useRoomStore = defineStore('room', {
           
           this.socket.onmessage = (event) => {
             console.log('Message WebSocket reçu:', event.data);
+            
             try {
               const data = JSON.parse(event.data);
+              
+              // Priorité maximale pour les messages de chat
+              if (data.type === 'chat_message') {
+                console.log('Message de chat reçu en priorité:', data.message);
+                
+                // Notifier avec les callbacks spécifiques de chat
+                this.notifyChatMessage(data);
+                
+                // Si un message est reçu via WebSocket, on est certain que la connexion fonctionne
+                this.isConnected = true;
+                
+                // Et vérifier si un message temporaire existe pour le remplacer
+                if (data.message && data.message.id) {
+                  const chatStore = useChatStore();
+                  const localMsgIndex = chatStore.messages.findIndex(
+                    m => typeof m.id === 'string' && 
+                    m.id.startsWith('local-') && 
+                    m.message === data.message.message &&
+                    m.username === data.message.username
+                  );
+                  
+                  if (localMsgIndex !== -1) {
+                    console.log('Message temporaire trouvé, remplacement par version serveur');
+                    
+                    // Remplacer le message temporaire par la version du serveur
+                    // en créant une nouvelle référence pour forcer la réactivité
+                    const updatedMessages = [...chatStore.messages];
+                    updatedMessages[localMsgIndex] = {
+                      ...updatedMessages[localMsgIndex],
+                      id: data.message.id
+                    };
+                    chatStore.messages = updatedMessages;
+                  }
+                }
+                return; // Sortir après avoir traité le message de chat
+              }
               
               // Traiter les différents types de messages
               switch (data.type) {
@@ -183,13 +222,14 @@ export const useRoomStore = defineStore('room', {
                   this.lastPongTime = Date.now();
                   break;
                 
-                case 'chat_message':
-                  // Le message de chat sera traité par le composant Room
-                  this.notifyPlaybackUpdate(data);
-                  break;
-                  
                 case 'playback_state_response':
                   // Synchroniser l'état de lecture initial
+                  this.notifyPlaybackUpdate(data);
+                  break;
+                
+                default:
+                  console.log('Type de message WebSocket non géré:', data.type);
+                  // Transmettre quand même aux callbacks car ils pourraient le traiter
                   this.notifyPlaybackUpdate(data);
                   break;
               }
@@ -260,7 +300,7 @@ export const useRoomStore = defineStore('room', {
     
     // Tenter une reconnexion WebSocket
     attemptReconnect(roomCode: string) {
-      if (this.isReconnecting || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+      if (this.isReconnecting) return;
       
       this.isReconnecting = true;
       this.reconnectAttempts++;
@@ -271,24 +311,51 @@ export const useRoomStore = defineStore('room', {
         clearTimeout(this.reconnectTimer);
       }
       
+      // Calculer un délai exponentiel pour éviter de surcharger le serveur
+      // Plus d'échecs = attente plus longue
+      const exponentialDelay = RECONNECT_DELAY * Math.pow(1.5, this.reconnectAttempts - 1);
+      const actualDelay = Math.min(exponentialDelay, 10000); // Max 10 secondes
+      
       this.reconnectTimer = setTimeout(async () => {
         try {
+          console.log('Tentative de reconnexion WebSocket...');
+          
+          // Fermer la connexion existante si elle existe
+          if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+          }
+          
           await this.connectWebSocket(roomCode);
           console.log('Reconnexion WebSocket réussie');
           this.isReconnecting = false;
+          this.isConnected = true;
           
-          // Demander une mise à jour de l'état de lecture et de la file d'attente
+          // Demander une mise à jour de l'état de lecture, de la file d'attente et des messages
           this.requestStateUpdate();
+          
+          // Recharger aussi les messages de chat après reconnexion
+          const chatStore = useChatStore();
+          if (this.currentRoom) {
+            chatStore.loadMessages(this.currentRoom.id);
+          }
+          
+          console.log('État après reconnexion: connecté =', this.isConnected);
         } catch (error) {
           console.error('Erreur lors de la reconnexion WebSocket:', error);
           this.isReconnecting = false;
+          this.isConnected = false;
           
           // Tenter une nouvelle reconnexion si on n'a pas atteint le nombre maximum de tentatives
           if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             this.attemptReconnect(roomCode);
+          } else {
+            console.error('Nombre maximum de tentatives de reconnexion atteint');
+            // Émettre un événement global pour notifier l'utilisateur
+            window.dispatchEvent(new CustomEvent('websocket-connection-failed'));
           }
         }
-      }, RECONNECT_DELAY);
+      }, actualDelay);
     },
     
     // Quitter la salle actuelle
@@ -405,6 +472,26 @@ export const useRoomStore = defineStore('room', {
       this.socket.send(JSON.stringify({
         type: 'request_queue'
       }));
+    },
+    
+    // S'abonner aux mises à jour de chat
+    onChatMessage(callback: Function) {
+      this.chatMessageCallbacks.push(callback);
+    },
+    
+    // Notifier les callbacks de message chat
+    notifyChatMessage(data: any) {
+      console.log('Notification spécifique de message chat aux callbacks:', this.chatMessageCallbacks.length);
+      this.chatMessageCallbacks.forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error('Erreur dans un callback de message chat:', error);
+        }
+      });
+      
+      // Notifier aussi les callbacks généraux
+      this.notifyPlaybackUpdate(data);
     }
   }
 });

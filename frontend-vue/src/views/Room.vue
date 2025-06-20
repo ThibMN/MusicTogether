@@ -208,6 +208,20 @@ onMounted(async () => {
       // Les mises à jour de lecture sont gérées par le MusicPlayer
     });
     
+    // Ajouter une écoute spécifique pour les messages de chat
+    roomStore.onChatMessage((data) => {
+      console.log('Room: message de chat reçu via le callback spécifique');
+      
+      // Cette fonction est maintenant vide car le traitement est fait par le composant ChatPanel
+      // Mais elle permet de garder une trace des messages arrivant au niveau de la room
+    });
+    
+    // Ajouter un traitement pour les pertes de connexion
+    window.addEventListener('websocket-connection-failed', () => {
+      console.error('Événement global: échec de la connexion WebSocket');
+      error.value = 'La connexion au serveur a été perdue. Essayez de rafraîchir la page.';
+    });
+    
     // Vérifier que la connexion WebSocket est bien établie
     if (!roomStore.isConnected) {
       console.error('La connexion WebSocket n\'a pas été établie correctement');
@@ -266,12 +280,27 @@ const leaveRoom = () => {
 
 // Nettoyer avant de quitter la page
 onBeforeUnmount(() => {
+  console.log('Nettoyage en cours avant de quitter Room...');
+  
+  // Quitter la salle dans le store
   roomStore.leaveRoom();
   
   // Arrêter la vérification périodique de la connexion
   if (connectionCheckInterval.value) {
     clearInterval(connectionCheckInterval.value);
+    connectionCheckInterval.value = null;
   }
+  
+  // Supprimer l'écouteur d'événement global
+  window.removeEventListener('websocket-connection-failed', () => {});
+  
+  // Vider les messages de chat
+  chatStore.clearMessages();
+  
+  // Vider la file d'attente
+  queueStore.clearQueue();
+  
+  console.log('Nettoyage terminé');
 });
 </script>
 
